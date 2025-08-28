@@ -201,7 +201,7 @@ class GEMMSolution:
     schedulerCost: str = "LinearWeighted"
 
     prefetch: bool = True
-    prefetchInFlight: int = 2
+    prefetchInFlight: int = 1
     prefetchLDSFactor: int = 0
     prefetchMixMemOps: bool = False
 
