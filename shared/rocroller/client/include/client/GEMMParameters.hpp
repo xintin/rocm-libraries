@@ -162,6 +162,7 @@ namespace rocRoller
                 // Unroll Options
                 unsigned int unrollX = 0;
                 unsigned int unrollY = 0;
+                unsigned int unrollK = 0;
 
                 std::string scheduler;
                 std::string schedulerCost;
