@@ -65,9 +65,6 @@ namespace rocRoller
                 auto tileTag = graph.mapper.get<MacroTile>(loadTag);
                 if(scaleTiles.contains(tileTag))
                 {
-                    // TODO: skip the swizzle pass for scale loaded via LDS.
-                    if(isOperation<LoadLDSTile>(graph.control.getElement(loadTag)))
-                        return std::map<int, int>();
                     scaleLoads.insert(std::make_pair(loadTag, tileTag));
                 }
             }
@@ -85,16 +82,14 @@ namespace rocRoller
             for(auto const multiplyTag : filter(graph.control.isElemType<Multiply>(),
                                                 graph.control.depthFirstVisit(root.value())))
             {
-
-                auto [tileTag, tile] = graph.getDimension<MacroTile>(
-                    multiplyTag, Connections::typeArgument<MacroTile>(arg));
-
+                auto exchangeTag = getExchangeForMultiply(graph, multiplyTag, arg);
+                if(!exchangeTag.has_value())
+                    continue;
                 Log::debug("Adding exchange-before-multiply Sequence edge from {} to {} for {}",
-                           tileExchangeMap.at(tileTag),
+                           exchangeTag.value(),
                            multiplyTag,
                            toString(arg));
-
-                graph.control.addElement(Sequence(), {tileExchangeMap.at(tileTag)}, {multiplyTag});
+                graph.control.addElement(Sequence(), {exchangeTag.value()}, {multiplyTag});
             }
         }
 
