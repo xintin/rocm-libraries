@@ -197,6 +197,8 @@ namespace rocRoller::Serialization
 
             iot::mapRequired(io, "loadLDSScale_A", params.loadLDSScaleA);
             iot::mapRequired(io, "loadLDSScale_B", params.loadLDSScaleB);
+            iot::mapRequired(io, "direct2LDSScale_A", params.direct2LDSScaleA);
+            iot::mapRequired(io, "direct2LDSScale_B", params.direct2LDSScaleB);
             iot::mapRequired(io, "swizzleScale", params.swizzleScale);
             iot::mapRequired(io, "prefetchScale", params.prefetchScale);
 

@@ -101,6 +101,7 @@ namespace rocRoller
 
                 rv << "_SLDS";
                 rocRoller::streamJoin(rv, std::vector{loadLDSScaleA, loadLDSScaleB}, "");
+                rocRoller::streamJoin(rv, std::vector{direct2LDSScaleA, direct2LDSScaleB}, "");
 
                 rv << "_Direct2LDS";
                 rocRoller::streamJoin(rv, std::vector{direct2LDSA, direct2LDSB}, "");
@@ -196,7 +197,8 @@ namespace rocRoller
                 s << std::endl;
                 s << "SwizzleScale:        " << x.swizzleScale << std::endl;
                 s << "LDS:       " << x.loadLDSA << x.loadLDSB << x.storeLDSD << std::endl;
-                s << "Direct2LDS:       " << x.direct2LDSA << x.direct2LDSB << std::endl;
+                s << "Direct2LDS:       " << x.direct2LDSA << x.direct2LDSB << x.direct2LDSScaleA
+                  << x.direct2LDSScaleB << std::endl;
                 s << "LSDScale:  " << x.loadLDSScaleA << x.loadLDSScaleB << std::endl;
                 s << "Prefetch:  "
                   << "enabled:" << x.prefetch << " inflight:" << x.prefetchInFlight
@@ -223,6 +225,7 @@ namespace rocRoller
                 }
                 s << std::endl;
                 s << x.types;
+                s << std::endl;
                 s << "Version:   " << x.version << std::endl;
                 return s;
             }

@@ -418,6 +418,14 @@ namespace rocRoller
                     params->setDimensionInfo(m_tagC, macTileC);
                     params->setDimensionInfo(m_tagD, macTileD);
 
+                    auto scaleMemoryType = [](bool loadLDS, bool direct2LDS) -> MemoryType {
+                        if(direct2LDS)
+                            return MemoryType::WAVE_Direct2LDS;
+                        if(loadLDS)
+                            return MemoryType::LDS;
+                        return MemoryType::WAVE;
+                    };
+
                     if(solutionParams.types.scaleA == Operations::ScaleMode::Separate)
                     {
                         auto macTileAScale = KernelGraph::CoordinateGraph::MacroTile(
@@ -428,7 +436,8 @@ namespace rocRoller
                              solutionParams.waveN,
                              solutionParams.waveK / solutionParams.types.scaleBlockSize,
                              solutionParams.waveB},
-                            solutionParams.loadLDSScaleA ? MemoryType::LDS : MemoryType::WAVE);
+                            scaleMemoryType(solutionParams.loadLDSScaleA,
+                                            solutionParams.direct2LDSScaleA));
                         params->setDimensionInfo(*m_tagLoadScaleA, macTileAScale);
                     }
                     if(solutionParams.types.scaleB == Operations::ScaleMode::Separate)
@@ -441,7 +450,8 @@ namespace rocRoller
                              solutionParams.waveN,
                              solutionParams.waveK / solutionParams.types.scaleBlockSize,
                              solutionParams.waveB},
-                            solutionParams.loadLDSScaleB ? MemoryType::LDS : MemoryType::WAVE);
+                            scaleMemoryType(solutionParams.loadLDSScaleB,
+                                            solutionParams.direct2LDSScaleB));
                         params->setDimensionInfo(*m_tagLoadScaleB, macTileBScale);
                     }
 

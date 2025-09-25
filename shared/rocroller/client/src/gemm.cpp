@@ -1104,6 +1104,9 @@ int main(int argc, const char* argv[])
         .loadLDSScaleA = false,
         .loadLDSScaleB = false,
 
+        .direct2LDSScaleA = false,
+        .direct2LDSScaleB = false,
+
         .swizzleScale  = false,
         .prefetchScale = false,
 
@@ -1334,6 +1337,12 @@ int main(int argc, const char* argv[])
 
     app.add_flag("--loadLDSScale_A", solution.loadLDSScaleA, "Use LDS when loading A scale.");
     app.add_flag("--loadLDSScale_B", solution.loadLDSScaleB, "Use LDS when loading B scale.");
+    app.add_flag("--direct2LDSScale_A",
+                 solution.direct2LDSScaleA,
+                 "Use direct-to-LDS when loading A scale.");
+    app.add_flag("--direct2LDSScale_B",
+                 solution.direct2LDSScaleB,
+                 "Use direct-to-LDS when loading B scale.");
 
     app.add_flag(
         "--swizzleScale", solution.swizzleScale, "Use Swizzle when loading A and B scale.");

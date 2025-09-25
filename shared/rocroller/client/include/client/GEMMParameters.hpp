@@ -139,6 +139,9 @@ namespace rocRoller
                 bool loadLDSScaleA = false;
                 bool loadLDSScaleB = false;
 
+                bool direct2LDSScaleA = false;
+                bool direct2LDSScaleB = false;
+
                 bool swizzleScale  = false;
                 bool prefetchScale = false;
 
