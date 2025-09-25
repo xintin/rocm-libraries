@@ -1005,8 +1005,11 @@ namespace rocRoller
                         = (m_exchangeSegment[exchangeTag] + numInFlight) % numUnroll;
 
                     auto loadTag = getLoadForExchange(exchangeTag, graph);
-                    AssertFatal(loadTag.has_value(),
-                                "couldn't find the load associated with the exchange");
+
+                    // When loading pre-swizzled scales from LDS, no
+                    // LoadTiled node exists.
+                    if(!loadTag)
+                        continue;
 
                     auto const search = scaleLoadU.find(loadTag.value());
                     if(search == scaleLoadU.end() || search->second > prefetchGlobalU)
