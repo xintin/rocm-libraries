@@ -1741,6 +1741,7 @@ int main(int argc, const char* argv[])
     problem.types  = types;
     solution.types = types;
 
+#if 0
     // Set default prefetchMixMemOps
     if(prefetchMixMemOpsFlag->count() == 0)
     {
@@ -1759,6 +1760,7 @@ int main(int argc, const char* argv[])
         if(solution.prefetchLDSFactor == 2 && (solution.direct2LDSA || solution.direct2LDSB))
             solution.prefetchMixMemOps = false;
     }
+#endif
 
     //
     // Run!
