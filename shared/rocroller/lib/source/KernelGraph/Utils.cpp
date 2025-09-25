@@ -1392,5 +1392,35 @@ namespace rocRoller
             return controlStack(control, graph.control);
         }
 
+        std::optional<int>
+            getExchangeForMultiply(KernelGraph const& graph, int multiplyTag, NaryArgument arg)
+        {
+            namespace CT = rocRoller::KernelGraph::CoordinateGraph;
+            namespace CF = rocRoller::KernelGraph::ControlGraph;
+
+            auto coordPredicate = [](auto const& edge) {
+                return CT::isEdge<CT::Segment>(edge) || CT::isEdge<CT::Index>(edge);
+            };
+
+            auto isExchangePredicate = [&graph](int operation) -> bool {
+                return graph.control.get<CF::Exchange>(operation).has_value();
+            };
+
+            int scale
+                = graph.mapper.get(multiplyTag, Connections::typeArgument<CT::MacroTile>(arg));
+            if(scale == -1)
+                return {};
+
+            auto tileTag = only(graph.coordinates.getOutputNodeIndices(scale, coordPredicate));
+            if(not tileTag)
+                return {};
+
+            auto connections = graph.mapper.getCoordinateConnections(tileTag.value());
+            for(auto connection : connections)
+                if(isExchangePredicate(connection.control))
+                    return connection.control;
+
+            return {};
+        }
     }
 }

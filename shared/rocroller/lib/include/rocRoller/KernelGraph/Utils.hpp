@@ -750,6 +750,12 @@ namespace rocRoller
          */
         template <typename EdgeType>
         void connectAllPairs(std::vector<int> const& A, std::vector<int> const& B, KernelGraph& kg);
+
+        /**
+         * @brief Find the Exchange node ...
+         */
+        std::optional<int>
+            getExchangeForMultiply(KernelGraph const& graph, int multiplyTag, NaryArgument arg);
     }
 }
 
