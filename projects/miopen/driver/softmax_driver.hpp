@@ -116,6 +116,9 @@ private:
     miopenSoftmaxAlgorithm_t algo;
     miopenSoftmaxMode_t mode;
     bool isForward = false;
+
+    bool isTime = false;
+    bool isMT   = false;
 };
 
 template <typename Tgpu, typename Tref>
@@ -145,6 +148,9 @@ int SoftmaxDriver<Tgpu, Tref>::GetandSetData()
     beta  = static_cast<float>(inflags.GetValueDouble("beta"));
     algo  = miopenSoftmaxAlgorithm_t(inflags.GetValueInt("algorithm"));
     mode  = miopenSoftmaxMode_t(inflags.GetValueInt("mode"));
+
+    isTime = (inflags.GetValueInt("time") == 1);
+    isMT   = (inflags.GetValueInt("mt") == 1);
     return (0);
 }
 
@@ -170,6 +176,7 @@ int SoftmaxDriver<Tgpu, Tref>::AddCmdLineArgs()
     inflags.AddInputFlag("time", 't', "0", "Time Each Layer (Default=0)", "int");
     inflags.AddInputFlag(
         "wall", 'w', "0", "Wall-clock Time Each Layer, Requires time == 1 (Default=0)", "int");
+    inflags.AddInputFlag("mt", 'u', "0", "Run Multithreaded version (Desfault=0)", "int");
 
     return miopenStatusSuccess;
 }
@@ -382,8 +389,26 @@ int SoftmaxDriver<Tgpu, Tref>::RunBackwardGPU()
 template <typename Tgpu, typename Tref>
 int SoftmaxDriver<Tgpu, Tref>::VerifyForward()
 {
-    mloSoftmaxForwardRunHost<Tgpu, Tref>(
-        inputTensor, outputTensor, in.data(), outhost.data(), alpha, beta, algo, mode);
+    const auto t1 = std::chrono::high_resolution_clock::now();
+
+    if(isMT)
+    {
+        mloSoftmaxForwardRunHostMT<Tgpu, Tref>(
+            inputTensor, outputTensor, in.data(), outhost.data(), alpha, beta, algo, mode);
+    }
+    else
+    {
+        mloSoftmaxForwardRunHost<Tgpu, Tref>(
+            inputTensor, outputTensor, in.data(), outhost.data(), alpha, beta, algo, mode);
+    }
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
+
+    if(isTime)
+    {
+        using float_ms = std::chrono::duration<float, std::milli>;
+        printf("CPU Time Forward Softmax Elapsed: %f ms\n", float_ms(t2 - t1).count());
+    }
 
     auto error           = miopen::rms_range(outhost, out);
     const Tref tolerance = data_type == miopenHalf ? 5e-2 : 1e-3; // 1e-6;
@@ -409,15 +434,40 @@ int SoftmaxDriver<Tgpu, Tref>::RunBackwardCPU()
 template <typename Tgpu, typename Tref>
 int SoftmaxDriver<Tgpu, Tref>::VerifyBackward()
 {
-    mloSoftmaxBackwardRunHost<Tgpu, Tref>(inputTensor,
-                                          outputTensor,
-                                          out.data(),
-                                          dout.data(),
-                                          dinhost.data(),
-                                          alpha,
-                                          beta,
-                                          algo,
-                                          mode);
+    const auto t1 = std::chrono::high_resolution_clock::now();
+
+    if(isMT)
+    {
+        mloSoftmaxBackwardRunHostMT<Tgpu, Tref>(inputTensor,
+                                                outputTensor,
+                                                out.data(),
+                                                dout.data(),
+                                                dinhost.data(),
+                                                alpha,
+                                                beta,
+                                                algo,
+                                                mode);
+    }
+    else
+    {
+        mloSoftmaxBackwardRunHost<Tgpu, Tref>(inputTensor,
+                                              outputTensor,
+                                              out.data(),
+                                              dout.data(),
+                                              dinhost.data(),
+                                              alpha,
+                                              beta,
+                                              algo,
+                                              mode);
+    }
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
+
+    if(isTime)
+    {
+        using float_ms = std::chrono::duration<float, std::milli>;
+        printf("CPU Time Backward Softmax Elapsed: %f ms\n", float_ms(t2 - t1).count());
+    }
 
     auto error           = miopen::rms_range(dinhost, din);
     const Tref tolerance = data_type == miopenHalf ? 5e-2 : 1e-3; // 1e-6;
