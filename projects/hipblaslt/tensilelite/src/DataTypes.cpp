@@ -278,6 +278,7 @@ namespace TensileLite
 
     DataTypeInfo const& DataTypeInfo::Get(std::string const& str)
     {
+        std::cout << "RK: GET: " << str << std::endl;
         registerAllTypeInfoOnce();
 
         auto* typeNames = getTypeNames();
@@ -293,9 +294,8 @@ namespace TensileLite
         return std::visit(
             [](const auto& cv) {
                 using T = std::decay_t<decltype(cv)>;
-                if constexpr(std::is_same_v<
-                                 T,
-                                 std::complex<float>> || std::is_same_v<T, std::complex<double>>)
+                if constexpr(std::is_same_v<T, std::complex<float>>
+                             || std::is_same_v<T, std::complex<double>>)
                     return "(" + std::to_string(cv.real()) + ", " + std::to_string(cv.imag()) + ")";
                 else
                     return std::to_string(cv);

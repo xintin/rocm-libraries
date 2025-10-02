@@ -920,8 +920,12 @@ namespace hipblaslt_ext
                hipblasComputeType_t typeCompute)
         : GemmInstance(handle, GemmType::HIPBLASLT_GEMM)
     {
+        std::cout<<"RK: gemm 1 " << std::endl;
         rocblaslt::Debug::Instance().markerStart("hipblasLtCreateGemmCpp");
         m_problem_types.push_back({opA, opB, typeA, typeB, typeC, typeD, typeCompute});
+        
+        std::cout<<"RK: gemm 2 " << std::endl;
+
         rocblaslt_init_gemmData((rocblaslt_handle)m_handle,
                                 static_cast<rocblaslt::RocGemmType>(m_gemm_type),
                                 opA,
@@ -933,6 +937,9 @@ namespace hipblaslt_ext
                                 (rocblaslt_compute_type)typeCompute,
                                 0,
                                 m_data);
+                                        
+        std::cout<<"RK: gemm 3 " << std::endl;
+
         rocblaslt::Debug::Instance().markerStop();
     }
 

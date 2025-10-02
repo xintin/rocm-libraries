@@ -394,27 +394,27 @@ try
 
         ("precision,r",
          value<std::string>(&precision)->default_value("f16_r"), "Precision of matrix A,B,C,D  "
-         "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r")
+         "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r,f32_c,f64_c")
 
         ("a_type",
          value<std::string>(&a_type), "Precision of matrix A. "
-        "Options: f32_r,f16_r,bf16_r,i8_r")
+        "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r,f32_c,f64_c")
 
         ("b_type",
          value<std::string>(&b_type), "Precision of matrix B. "
-        "Options: f32_r,f16_r,bf16_r,i8_r")
+        "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r,f32_c,f64_c")
 
         ("c_type",
          value<std::string>(&c_type), "Precision of matrix C. "
-         "Options: f32_r,f16_r,bf16_r,i8_r")
+         "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r,f32_c,f64_c")
 
         ("d_type",
          value<std::string>(&d_type), "Precision of matrix D. "
-        "Options: f32_r,f16_r,bf16_r,i8_r")
+        "Options: f32_r,f16_r,bf16_r,f64_r,i32_r,i8_r,f32_c,f64_c")
 
         ("compute_type",
          value<std::string>(&compute_type)->default_value("f32_r"), "Precision of computation. "
-         "Options: s,f32_r,x,xf32_r,f64_r,i32_r,f32_bf16_r")
+         "Options: s,f32_r,x,xf32_r,f64_r,i32_r,f32_bf16_r,f32_c,f64_c")
 
         ("compute_input_typeA",
          value<std::string>(&compute_input_typeA), "Precision of computation input A. "
@@ -426,7 +426,7 @@ try
 
         ("scale_type",
          value<std::string>(&scale_type), "Precision of scalar. "
-        "Options: f16_r,bf16_r")
+        "Options: f16_r,bf16_r,f32_c,f64_c")
 
         ("initialization",
          value<std::string>(&initialization)->default_value("hpl"),
@@ -495,7 +495,7 @@ try
 
         ("bias_type",
          value<std::string>(&bias_type), "Precision of bias vector."
-        "Options: f16_r,bf16_r,f32_r,default(same with D type)")
+        "Options: f16_r,bf16_r,f32_r,f32_c,f64_c,default(same with D type)")
 
         ("bias_source",
          value<std::string>(&bias_source)->default_value("d"),
@@ -855,7 +855,7 @@ try
             + " is not equal to --d_type " + std::string(hip_datatype_to_string(arg.d_type)));
 
     bool is_f16 = arg.a_type == HIP_R_16F || arg.a_type == HIP_R_16BF;
-    bool is_f32 = arg.a_type == HIP_R_32F;
+    bool is_f32 = arg.a_type == HIP_R_32F || arg.a_type == HIP_C_32F;
     arg.compute_type
         = compute_type == "" ? (HIPBLAS_COMPUTE_32F) : string_to_hipblas_computetype(compute_type);
     if(arg.compute_type == HIPBLASLT_COMPUTE_TYPE_INVALID)

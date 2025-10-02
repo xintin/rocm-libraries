@@ -111,6 +111,8 @@ inline std::size_t realDataTypeSize(hipDataType dtype)
         {HIP_R_8F_E5M2_FNUZ, 1},
         {HIP_R_8F_E4M3, 1},
         {HIP_R_8F_E5M2, 1},
+        {HIP_C_32F, 4},
+        {HIP_C_64F, 8},
     };
 
     return dtypeMap.at(dtype);
