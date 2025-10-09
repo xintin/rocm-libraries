@@ -39,6 +39,8 @@
 #include <rocRoller/Operations/Operations.hpp>
 #include <rocRoller/Utilities/Logging.hpp>
 
+//#define USE_FULLWAVE
+
 namespace rocRoller
 {
     namespace KernelGraph
@@ -617,6 +619,104 @@ namespace rocRoller
             default:
                 Throw<FatalError>("addLoadWaveTileCT waveTile.layout not implemented yet.");
             }
+        }
+
+        /* LoadLDSTile */
+        void addLoadWaveTileCT_FULLWAVE(KernelGraph&                       graph,
+                                        std::vector<DeferredConnection>&   connections,
+                                        int                                macTileTag,
+                                        int                                iMacX,
+                                        int                                iMacY,
+                                        DataType const&                    dataType,
+                                        int                                wavefrontSize,
+                                        bool                               isFromLDS,
+                                        std::array<unsigned int, 3> const& workgroupSizes,
+                                        std::vector<unsigned int> const&   jammedTiles,
+                                        CommandParametersPtr               params,
+                                        ContextPtr                         context)
+        {
+            auto tile     = graph.coordinates.getNode<MacroTile>(macTileTag);
+            auto waveTile = WaveTile(tile);
+
+            uint activeLanesInWave  = static_cast<uint>(wavefrontSize);
+            uint numElements        = waveTile.sizes[0] * waveTile.sizes[1];
+            uint numElementsPerLane = numElements / activeLanesInWave;
+
+            auto waveTileTag = graph.coordinates.addElement(waveTile);
+            graph.coordinates.addElement(PassThrough(), {waveTileTag}, {macTileTag});
+            connections.push_back(DC<WaveTile>(waveTileTag));
+
+            auto nWaveX = graph.coordinates.addElement(waveTile.tileNumber(0));
+            auto nWaveY = graph.coordinates.addElement(waveTile.tileNumber(1));
+
+            connections.push_back(DC<WaveTileNumber>(nWaveX, 0));
+            connections.push_back(DC<WaveTileNumber>(nWaveY, 1));
+
+            auto activeLanesInWaveLiteral = literal(activeLanesInWave);
+
+            auto waveX = graph.coordinates.addElement(Wavefront(0));
+            auto waveY = graph.coordinates.addElement(Wavefront(1));
+            auto wave  = graph.coordinates.addElement(Wavefront(-1));
+
+            graph.coordinates.addElement(Flatten(), {waveX, waveY}, {wave});
+
+            connections.push_back(DC<Wavefront>(waveX, 0));
+            connections.push_back(DC<Wavefront>(waveY, 1));
+
+            auto workitem = graph.coordinates.addElement(Workitem(0));
+            auto lane     = graph.coordinates.addElement(Lane(activeLanesInWaveLiteral, nullptr));
+            graph.coordinates.addElement(Flatten(), {wave, lane}, {workitem});
+            auto element = graph.coordinates.addElement(VGPR(literal(numElementsPerLane), nullptr));
+
+            connections.push_back(DC<Lane>(lane));
+            connections.push_back(DC<VGPR>(element));
+
+            // Stored as:
+            //   iMacX = Flatten([jammed wave, waveX, waveY])
+            //   iMacY = Flatten([lane, element])
+
+            uint sizeX = 1;
+
+            std::vector<int> tiled;
+            if(waveTile.layout == LayoutType::MATRIX_A)
+            {
+                if(jammedTiles[0] > 1)
+                {
+                    auto jammedWavetileX = graph.coordinates.addElement(
+                        JammedWaveTileNumber(0, literal(jammedTiles[0]), literal(1)));
+                    connections.push_back(DC<JammedWaveTileNumber>(jammedWavetileX, 0));
+                    tiled.push_back(jammedWavetileX);
+                    sizeX *= jammedTiles[0];
+                }
+                tiled.push_back(waveX);
+                tiled.push_back(nWaveY);
+                sizeX *= 4; // XXX
+            }
+            else if(waveTile.layout == LayoutType::MATRIX_B)
+            {
+                if(jammedTiles[1] > 1)
+                {
+                    auto jammedWavetileY = graph.coordinates.addElement(
+                        JammedWaveTileNumber(1, literal(jammedTiles[1]), literal(1)));
+                    connections.push_back(DC<JammedWaveTileNumber>(jammedWavetileY, 1));
+                    tiled.push_back(jammedWavetileY);
+                    sizeX *= jammedTiles[1];
+                }
+                tiled.push_back(nWaveX);
+                tiled.push_back(waveY);
+                sizeX *= 4; // XXX
+            }
+
+            auto iMacXCoord = *graph.coordinates.get<MacroTileIndex>(iMacX);
+            iMacXCoord.size = literal(sizeX);
+            graph.coordinates.setElement(iMacX, iMacXCoord);
+
+            auto iMacYCoord = *graph.coordinates.get<MacroTileIndex>(iMacY);
+            iMacYCoord.size = literal(activeLanesInWave * numElementsPerLane);
+            graph.coordinates.setElement(iMacY, iMacYCoord);
+
+            graph.coordinates.addElement(Tile(), std::vector<int>{iMacX}, tiled);
+            graph.coordinates.addElement(Tile(), {iMacY}, {lane, element});
         }
 
         /**
@@ -1228,6 +1328,93 @@ namespace rocRoller
             }
         }
 
+        /* StoreLDSTile */
+        void addStoreThreadTileCT_FULLWAVE(KernelGraph&                       graph,
+                                           std::vector<DeferredConnection>&   connections,
+                                           int                                macTileTag,
+                                           int                                iMacX,
+                                           int                                iMacY,
+                                           int                                wavefrontSize,
+                                           std::array<unsigned int, 3> const& workgroupSizes,
+                                           std::vector<unsigned int> const&   jammedTiles)
+        {
+            // XXX We want to have a check somewhere to make sure that
+            // the size of the "small-k" unroll matches the "free"
+            // number of wavefronts
+
+            auto tile     = graph.coordinates.getNode<MacroTile>(macTileTag);
+            auto waveTile = WaveTile(tile);
+
+            uint activeLanesInWave  = static_cast<uint>(wavefrontSize);
+            uint numElements        = waveTile.sizes[0] * waveTile.sizes[1];
+            uint numElementsPerLane = numElements / activeLanesInWave;
+
+            auto activeLanesInWaveLiteral = literal(activeLanesInWave);
+
+            auto waveX = graph.coordinates.addElement(Wavefront(0));
+            auto waveY = graph.coordinates.addElement(Wavefront(1));
+            auto wave  = graph.coordinates.addElement(Wavefront(-1));
+
+            graph.coordinates.addElement(Tile(), {wave}, {waveX, waveY});
+
+            auto elementNumberX
+                = graph.coordinates.addElement(ElementNumber(0, literal(numElementsPerLane)));
+            auto elementNumberY
+                = graph.coordinates.addElement(ElementNumber(1, literal(activeLanesInWave)));
+
+            connections.push_back(DC<ElementNumber>(elementNumberX, 0));
+            connections.push_back(DC<ElementNumber>(elementNumberY, 1));
+
+            auto workitem = graph.coordinates.addElement(Workitem(0));
+            auto lane     = graph.coordinates.addElement(Lane(activeLanesInWaveLiteral, nullptr));
+            graph.coordinates.addElement(Tile(), {workitem}, {wave, lane});
+            auto element = graph.coordinates.addElement(VGPR(literal(numElementsPerLane), nullptr));
+
+            graph.coordinates.addElement(PassThrough(), {elementNumberY}, {element});
+
+            uint sizeX = 1;
+
+            std::vector<int> flatten;
+            if(tile.layoutType == LayoutType::MATRIX_A)
+            {
+                if(jammedTiles[0] > 1) // XXX Assert?
+                {
+                    auto jammedWavetileX = graph.coordinates.addElement(
+                        JammedWaveTileNumber(0, literal(jammedTiles[0]), nullptr));
+                    flatten.push_back(jammedWavetileX);
+                    sizeX *= jammedTiles[0];
+                    graph.coordinates.addElement(
+                        PassThrough(), {elementNumberX}, {jammedWavetileX});
+                }
+            }
+            else if(tile.layoutType == LayoutType::MATRIX_B)
+            {
+                if(jammedTiles[1] > 1)
+                {
+                    auto jammedWavetileY = graph.coordinates.addElement(
+                        JammedWaveTileNumber(1, literal(jammedTiles[1]), literal(1)));
+                    flatten.push_back(jammedWavetileY);
+                    sizeX *= jammedTiles[1];
+                    graph.coordinates.addElement(
+                        PassThrough(), {elementNumberX}, {jammedWavetileY});
+                }
+            }
+            flatten.push_back(waveX); // For A/B one of these is "free"
+            flatten.push_back(waveY);
+            sizeX *= 4; // XXX
+
+            auto iMacXCoord = *graph.coordinates.get<MacroTileIndex>(iMacX);
+            iMacXCoord.size = literal(sizeX);
+            graph.coordinates.setElement(iMacX, iMacXCoord);
+
+            auto iMacYCoord = *graph.coordinates.get<MacroTileIndex>(iMacY);
+            iMacYCoord.size = literal(activeLanesInWave * numElementsPerLane);
+            graph.coordinates.setElement(iMacY, iMacYCoord);
+
+            graph.coordinates.addElement(Flatten(), flatten, std::vector<int>{iMacX});
+            graph.coordinates.addElement(Flatten(), {lane, element}, {iMacY});
+        }
+
         /**
          * @brief Create an internal tile backed by a ThreadTile.
          */
@@ -1407,6 +1594,122 @@ namespace rocRoller
                               jammedTiles,
                               params,
                               context);
+
+            graph.coordinates.addElement(DataFlow(), {userTag}, {macTileTag});
+        }
+
+        /* LoadTiled */
+        void loadMacroTile_FULLWAVE(KernelGraph&                       graph,
+                                    std::vector<DeferredConnection>&   connections,
+                                    int                                userTag,
+                                    int                                macTileTag,
+                                    std::vector<int> const&            sdim,
+                                    DataType const&                    dataType,
+                                    std::array<unsigned int, 3> const& workgroupSizes,
+                                    std::vector<unsigned int> const&   jammedTiles,
+                                    CommandParametersPtr               params,
+                                    ContextPtr                         context)
+
+        {
+            auto wavefrontSize = context->kernel()->wavefront_size();
+            auto tile          = graph.coordinates.get<MacroTile>(macTileTag).value();
+
+            auto [nMacX, iMacX, nMacY, iMacY]
+                = addLoadMacroTileCT(graph, connections, macTileTag, sdim);
+
+            uint activeLanesInWave        = static_cast<uint>(wavefrontSize);
+            auto activeLanesInWaveLiteral = literal(activeLanesInWave);
+
+            auto workitem = graph.coordinates.addElement(Workitem(0));
+            auto wave     = graph.coordinates.addElement(Wavefront(-1));
+            auto lane = graph.coordinates.addElement(Lane(activeLanesInWaveLiteral, literal(1u)));
+
+            graph.coordinates.addElement(Flatten(), {wave, lane}, {workitem});
+
+            auto waveX = graph.coordinates.addElement(Wavefront(0));
+            auto waveY = graph.coordinates.addElement(Wavefront(1));
+            graph.coordinates.addElement(Flatten(), {waveX, waveY}, {wave});
+
+            auto simd     = graph.coordinates.addElement(Adhoc("SIMD", literal(4u), nullptr));
+            auto simdLane = graph.coordinates.addElement(Lane(literal(16u), nullptr));
+            graph.coordinates.addElement(Flatten(), {simd, simdLane}, {lane});
+
+            auto simdX = graph.coordinates.addElement(Adhoc("SIMDX", literal(2u), nullptr));
+            auto simdY = graph.coordinates.addElement(Adhoc("SIMDY", literal(2u), nullptr));
+            graph.coordinates.addElement(Flatten(), {simdX, simdY}, {simd});
+
+            auto simdLaneX = graph.coordinates.addElement(Lane(literal(2u), nullptr));
+            auto simdLaneY = graph.coordinates.addElement(Lane(literal(8u), nullptr));
+
+            graph.coordinates.addElement(Flatten(), {simdLaneX, simdLaneY}, {simdLane});
+
+            int elementNumberX, elementNumberY;
+
+            auto isRowMajor = params->transposeMemoryAccess[tile.layoutType];
+            auto isColMajor = !isRowMajor;
+            auto isMatrixA  = tile.layoutType == LayoutType::MATRIX_A;
+            auto isMatrixB  = tile.layoutType == LayoutType::MATRIX_B;
+
+            if(isRowMajor && isMatrixA)
+            {
+                // FP4: 256x128
+                elementNumberX = graph.coordinates.addElement(ElementNumber(0, literal(4u)));
+                elementNumberY = graph.coordinates.addElement(ElementNumber(1, literal(32u)));
+
+                // m = WorkgroupX * 256 + Unroll * 128 + Jam * 32 + SIMDX * 16 + WaveX * 8 + SIMDY * 4 + WaveY * 2 + SIMDLaneX
+                // k = LoopCounter + Prefetch + SIMDLaneY * 32 + Element
+
+                // Size is:
+                //   simdX * waveX * simdY * waveY * simdLaneX
+                //     = 2 *     2 *     2 *     2 *         2 = 32
+                graph.coordinates.addElement(
+                    Tile(), {iMacX}, {simdX, waveX, simdY, waveY, simdLaneX});
+
+		
+
+                // Size is:
+                //   simdLaneY * elementNumberY
+                //     =     8 *             32
+                //     = 256
+                //
+		// This is larger than 128 but incoporates UnrollK=2.
+                graph.coordinates.addElement(
+		    Tile(), {iMacY}, {simdLaneY, elementNumberY});
+            }
+            else if(isColMajor && isMatrixB)
+            {
+            }
+            else
+            {
+                Throw<FatalError>("Not implemented yet.");
+            }
+
+            // # Wave in [0, 3]
+            // # Lane in [0, 63]
+            // Wave, Lane = Workitem // 64, Workitem % 64
+
+            // # SIMD in [0, 3]
+            // # SIMDLane in [0, 15]
+            // SIMD, SIMDLane = Lane // 16, Lane % 16
+
+            // # WaveX in [0, 1] slow
+            // # WaveY in [0, 1] fast
+            // WaveX, WaveY = Wave // 2, Wave % 2
+
+            // # SIMDX in [0, 1] slow
+            // # SIMDY in [0, 1] fast
+            // SIMDX, SIMDY = SIMD // 2, SIMD % 2
+            // # SIMDLaneX in [0, 1] slow
+            // # SIMDLaneY in [0, 7] fast
+            // SIMDLaneX, SIMDLaneY = SIMDLane // 8, SIMDLane % 8
+            // m = WorkgroupX * 256 + Unroll * 128 + Jam * 32 + SIMDX * 16 + WaveX * 8 + SIMDY * 4 + WaveY * 2 + SIMDLaneX
+            // k = LoopCounter + Prefetch + SIMDLaneY * 32 + Element
+
+            // assert predictedMatrixA[m, k] == -1
+            // predictedMatrixA[m, k] = WorkgroupX * 256 + Workitem
+
+            connections.push_back(DC<ElementNumber>(elementNumberX, 0));
+            connections.push_back(DC<ElementNumber>(elementNumberY, 1));
 
             graph.coordinates.addElement(DataFlow(), {userTag}, {macTileTag});
         }
@@ -1713,6 +2016,10 @@ namespace rocRoller
 
                 logger->debug("  User({}), MacroTile({}), Size: {}", userTag, tileTag, tile.sizes);
 
+#ifdef USE_FULLWAVE
+                auto workgroupSizes = m_context->kernel()->workgroupSize();
+#endif
+
                 std::vector<DeferredConnection> connections;
 
                 auto loadTag               = reindexer.control.at(tag);
@@ -1721,6 +2028,18 @@ namespace rocRoller
                 switch(tile.memoryType)
                 {
                 case MemoryType::VGPR:
+#ifdef USE_FULLWAVE
+                    loadMacroTile_FULLWAVE(graph,
+                                           connections,
+                                           userTag,
+                                           tileTag,
+                                           sdims,
+                                           varType.dataType,
+                                           workgroupSizes,
+                                           wavetilesPerWavefront,
+                                           m_params,
+                                           m_context);
+#else
                     loadMacroTile_VGPR(graph,
                                        connections,
                                        userTag,
@@ -1730,6 +2049,7 @@ namespace rocRoller
                                        m_params,
                                        m_context,
                                        isDirect2LDS);
+#endif
                     break;
                 case MemoryType::WAVE:
                     loadMacroTile_WAVE(graph,
@@ -1812,6 +2132,24 @@ namespace rocRoller
 
                 if(tile.memoryType == MemoryType::WAVE)
                 {
+#ifdef USE_FULLWAVE
+                    auto              varType     = getVariableType(graph, loadTag);
+                    std::vector<uint> jammedTiles = wavetilesPerWavefront;
+                    addLoadWaveTileCT_FULLWAVE(graph,
+                                               connections,
+                                               tileTag,
+                                               iMacX,
+                                               iMacY,
+                                               varType.dataType,
+                                               wavefrontSize,
+                                               true,
+                                               workgroupSizes,
+                                               jammedTiles,
+                                               m_params,
+                                               m_context);
+
+                    useSwappedAccess = true;
+#else
                     auto              varType     = getVariableType(graph, loadTag);
                     std::vector<uint> jammedTiles = wavetilesPerWavefront;
                     addLoadWaveTileCT(graph,
@@ -1825,6 +2163,7 @@ namespace rocRoller
                                       jammedTiles,
                                       m_params,
                                       m_context);
+#endif
                 }
                 else if(tile.memoryType == MemoryType::WAVE_SPLIT)
                 {
@@ -1986,6 +2325,19 @@ namespace rocRoller
 
                 if(tile.memoryType == MemoryType::VGPR)
                 {
+#ifdef USE_FULLWAVE
+                    // We are storing entire workgroup tiles
+                    addStoreThreadTileCT_FULLWAVE(graph,
+                                                  connections,
+                                                  tileTag,
+                                                  iMacX,
+                                                  iMacY,
+                                                  wavefrontSize,
+                                                  workgroupSizes,
+                                                  wavetilesPerWavefront);
+
+                    useSwappedAccess = true;
+#else
                     // We are storing entire workgroup tiles
                     std::vector<uint> jammedTiles = {1, 1};
                     addStoreThreadTileCT(graph,
@@ -1997,6 +2349,7 @@ namespace rocRoller
                                          jammedTiles,
                                          useSwappedAccess,
                                          isDirect2LDS);
+#endif
                 }
                 else
                 {
