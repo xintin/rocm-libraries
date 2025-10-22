@@ -582,6 +582,9 @@ struct GridwiseGemmMultipleD_xdl_cshuffle
         constexpr auto b_block_desc_bk0_n_bk1 = GetBBlockDescriptor_BK0PerBlock_NPerBlock_BK1();
 
         // A matrix blockwise copy
+        // pntS<decltype(AK0PerBlock)>{};
+        // pntS<decltype(AK1)>{};
+        // pntS<decltype(a_block_desc_ak0_m_ak1)>{};
         auto a_blockwise_copy =
             ThreadGroupTensorSliceTransfer_v4r1<ThisThreadBlock,
                                                 AElementwiseOperation,
@@ -613,6 +616,8 @@ struct GridwiseGemmMultipleD_xdl_cshuffle
                 ck::tensor_operation::element_wise::PassThrough{});
 
         // B matrix blockwise copy
+        // pntS<decltype(BK0PerBlock)>{};
+        // pntS<decltype(BK1)>{};
         auto b_blockwise_copy =
             ThreadGroupTensorSliceTransfer_v4r1<ThisThreadBlock,
                                                 BElementwiseOperation,
@@ -642,6 +647,7 @@ struct GridwiseGemmMultipleD_xdl_cshuffle
                 b_block_desc_bk0_n_bk1,
                 make_multi_index(0, 0, 0),
                 ck::tensor_operation::element_wise::PassThrough{});
+        // auto a_blockwise_copy = b_blockwise_copy; // don't forget
 
         // GEMM definition
         //   c_mtx += transpose(a_mtx) * b_mtx
@@ -683,6 +689,8 @@ struct GridwiseGemmMultipleD_xdl_cshuffle
                      LoopSched,
                      AComputeDataType_,
                      BComputeDataType_>();
+
+        // pntS<decltype(blockwise_gemm)>{};
 
         auto c_thread_buf = blockwise_gemm.GetCThreadBuffer();
 

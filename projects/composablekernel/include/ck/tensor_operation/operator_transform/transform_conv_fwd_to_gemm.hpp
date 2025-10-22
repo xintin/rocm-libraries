@@ -1284,22 +1284,55 @@ struct TransformConvFwdToGemm
 
     template <typename ALayout,
               typename ck::enable_if<NDimSpatial == 2 &&
-                                         is_same_v<ALayout, tensor_layout::convolution::NGCHW>,
+                                         (is_same_v<ALayout, tensor_layout::convolution::NGCHW> ||
+                                          is_same_v<ALayout, tensor_layout::convolution::GNCHW>),
                                      bool>::type = false>
     __host__ __device__ auto MakeADescriptor_M_K() const
     {
         static_assert(NumGroupsToMerge == 1);
-        static_assert(ConvForwardSpecialization ==
-                      device::ConvolutionForwardSpecialization::Filter1x1Stride1Pad0);
+        // static_assert(ConvForwardSpecialization ==
+        //               device::ConvolutionForwardSpecialization::Filter1x1Stride1Pad0);
 
-        const auto in_gemmm_gemmk_desc = make_naive_tensor_descriptor(
-            make_tuple(N_, Ho_ * Wo_, C_), make_tuple(NStrideTensorA_, I1, CStrideTensorA_));
+        // const auto in_gemmm_gemmk_desc = make_naive_tensor_descriptor(
+        //     make_tuple(N_, Ho_ * Wo_, C_), make_tuple(NStrideTensorA_, I1, CStrideTensorA_));
+
+        // return transform_tensor_descriptor(
+        //     in_gemmm_gemmk_desc,
+        //     make_tuple(make_merge_transform(make_tuple(N_, Ho_ * Wo_)),
+        //                make_pass_through_transform(C_)),
+        //     make_tuple(Sequence<0, 1>{}, Sequence<2>{}),
+        //     make_tuple(Sequence<0>{}, Sequence<1>{}));
+
+        // first let's do NCHW
+        const auto in_n_c_hi_wi_desc = make_naive_tensor_descriptor(
+            make_tuple(N_, C_, Hi_, Wi_),
+            make_tuple(NStrideTensorA_, CStrideTensorA_, HiStride_, WiStride_));
+
+        const auto in_n_c_hip_wip_desc = transform_tensor_descriptor(
+            in_n_c_hi_wi_desc,
+            make_tuple(make_pass_through_transform(N_),
+                       make_pass_through_transform(C_),
+                       make_pad_transform(Hi_, InLeftPadH_, InRightPadH_),
+                       make_pad_transform(Wi_, InLeftPadW_, InRightPadW_)),
+            make_tuple(Sequence<0>{}, Sequence<1>{}, Sequence<2>{}, Sequence<3>{}),
+            make_tuple(Sequence<0>{}, Sequence<1>{}, Sequence<2>{}, Sequence<3>{}));
+
+        const auto in_n_c_y_ho_x_wo_desc = transform_tensor_descriptor(
+            in_n_c_hip_wip_desc,
+            make_tuple(make_pass_through_transform(N_),
+                       make_pass_through_transform(C_),
+                       make_embed_transform(make_tuple(Number<3>{}, Ho_),
+                                            make_tuple(ConvDilationH_, ConvStrideH_)),
+                       make_embed_transform(make_tuple(Number<3>{}, Wo_),
+                                            make_tuple(ConvDilationW_, ConvStrideW_))),
+            make_tuple(Sequence<0>{}, Sequence<1>{}, Sequence<2>{}, Sequence<3>{}),
+            make_tuple(Sequence<0>{}, Sequence<1>{}, Sequence<2, 3>{}, Sequence<4, 5>{}));
 
         return transform_tensor_descriptor(
-            in_gemmm_gemmk_desc,
-            make_tuple(make_merge_transform(make_tuple(N_, Ho_ * Wo_)),
-                       make_pass_through_transform(C_)),
-            make_tuple(Sequence<0, 1>{}, Sequence<2>{}),
+            in_n_c_y_ho_x_wo_desc,
+            make_tuple(make_merge_transform(make_tuple(N_, Ho_, Wo_)),
+                       make_merge_transform(make_tuple(Number<3>{}, Number<3>{}, C_))),
+            make_tuple(Sequence<0, 3, 5>{}, Sequence<2, 4, 1>{}),
             make_tuple(Sequence<0>{}, Sequence<1>{}));
     }
 
@@ -1331,12 +1364,19 @@ struct TransformConvFwdToGemm
                                      bool>::type = false>
     __host__ __device__ auto MakeBDescriptor_N_K() const
     {
-        static_assert(ConvForwardSpecialization ==
-                          device::ConvolutionForwardSpecialization::Filter1x1Stride1Pad0 ||
-                      ConvForwardSpecialization ==
-                          device::ConvolutionForwardSpecialization::Filter1x1Pad0);
+        // static_assert(ConvForwardSpecialization ==
+        //                   device::ConvolutionForwardSpecialization::Filter1x1Stride1Pad0 ||
+        //               ConvForwardSpecialization ==
+        //                   device::ConvolutionForwardSpecialization::Filter1x1Pad0);
         static_assert(NumGroupsToMerge == 1);
-        return make_naive_tensor_descriptor_packed(make_tuple(K_, C_));
+
+        // first let's do KCYX
+        const auto wei_k_c_yx_desc = make_naive_tensor_descriptor_packed(make_tuple(K_, C_, ZYX_));
+        return transform_tensor_descriptor(
+            wei_k_c_yx_desc,
+            make_tuple(make_pass_through_transform(K_), make_merge_transform(make_tuple(ZYX_, C_))),
+            make_tuple(Sequence<0>{}, Sequence<2, 1>{}),
+            make_tuple(Sequence<0>{}, Sequence<1>{}));
     }
 
     template <typename BLayout,

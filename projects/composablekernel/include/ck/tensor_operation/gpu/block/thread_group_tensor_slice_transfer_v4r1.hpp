@@ -47,6 +47,9 @@ struct ThreadGroupTensorSliceTransfer_v4r1
     static constexpr index_t nDim = remove_reference_t<SrcDesc>::GetNumOfDimension();
 
     static constexpr auto thread_slice_lengths = BlockSliceLengths{} / ThreadClusterLengths{};
+    // pntS<BlockSliceLengths> z;              // <4, 64, 8>
+    // pntS<ThreadClusterLengths> x; // <4, 16, 1>
+    // pntS<decltype(thread_slice_lengths)> y; // <1, 4, 8>
 
     using Index = MultiIndex<nDim>;
 
@@ -86,6 +89,19 @@ struct ThreadGroupTensorSliceTransfer_v4r1
                 make_multi_index(ThreadGroup::GetThreadId()));
 
             const auto thread_data_idx_begin = thread_cluster_idx * thread_slice_lengths;
+            // pntS<decltype(thread_slice_lengths)>{}; // <4, 1, 8>
+            // if(THREAD_IDX_UB(0, 0, 0, 63))
+            //     printf("%d : %d %d %d * %d %d %d = %d %d %d\n",
+            //            threadIdx.x,
+            //            thread_cluster_idx[Number<0>{}],
+            //            thread_cluster_idx[Number<1>{}],
+            //            thread_cluster_idx[Number<2>{}],
+            //            thread_slice_lengths[Number<0>{}].value,
+            //            thread_slice_lengths[Number<1>{}].value,
+            //            thread_slice_lengths[Number<2>{}].value,
+            //            thread_data_idx_begin[Number<0>{}],
+            //            thread_data_idx_begin[Number<1>{}],
+            //            thread_data_idx_begin[Number<2>{}]);
 
             threadwise_transfer_.SetSrcSliceOrigin(src_desc,
                                                    src_block_slice_origin + thread_data_idx_begin);
@@ -171,6 +187,7 @@ struct ThreadGroupTensorSliceTransfer_v4r1
     private:
     static constexpr auto thread_cluster_desc_ =
         make_cluster_descriptor(ThreadClusterLengths{}, ThreadClusterArrangeOrder{});
+    // pntS<decltype(thread_cluster_desc_)> y;
 
     using ThreadwiseTransfer =
         ThreadwiseTensorSliceTransfer_v3r1<decltype(thread_slice_lengths),

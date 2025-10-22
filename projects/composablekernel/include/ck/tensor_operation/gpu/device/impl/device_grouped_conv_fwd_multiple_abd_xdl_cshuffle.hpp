@@ -351,19 +351,20 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
     static constexpr auto I4 = Number<4>{};
     static constexpr auto I5 = Number<5>{};
 
-    static constexpr bool isATensorColMajor =
-        (ConvForwardSpecialization == ConvolutionForwardSpecialization::Filter1x1Stride1Pad0) &&
-        (ABlockTransferSrcVectorDim == 1) && (NumGroupsToMerge == 1) &&
-        (is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() ||
-         is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>());
+    // static constexpr bool isATensorColMajor =
+    //     (ConvForwardSpecialization == ConvolutionForwardSpecialization::Filter1x1Stride1Pad0) &&
+    //     (ABlockTransferSrcVectorDim == 1) && (NumGroupsToMerge == 1) &&
+    //     (is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() ||
+    //      is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>());
+    static constexpr bool isATensorColMajor = true;
 
-    static constexpr bool NeedTransposeKernel =
-        (isATensorColMajor == false) && (is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() ||
-                                         is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>());
+    // static constexpr bool NeedTransposeKernel =
+    //     (isATensorColMajor == false) && (is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>());
+    static constexpr bool NeedTransposeKernel = false;
 
-    static constexpr bool CTranspose = (NeedTransposeKernel == false) && (isMultiAB == false) &&
-                                       (is_same_v<ELayout, tensor_layout::convolution::NGKHW> ||
-                                        is_same_v<ELayout, tensor_layout::convolution::NGKDHW>);
+    // static constexpr bool CTranspose = (NeedTransposeKernel == false) && (isMultiAB == false) &&
+    //                                    (is_same_v<ELayout, tensor_layout::convolution::NGKDHW>);
+    static constexpr bool CTranspose = true;
 
     using ConvToGemmFwdTransformer = TransformConvFwdToGemm<NDimSpatial,
                                                             ConvForwardSpecialization,
@@ -393,11 +394,11 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
     {
         namespace ctc = tensor_layout::convolution;
         using Layout  = std::conditional_t<
-             is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-             ctc::NHWGC,
-             std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-                                ctc::NDHWGC,
-                                ALay>>;
+            is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+            ctc::NHWGC,
+            std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+                               ctc::NDHWGC,
+                               ALay>>;
 
         const auto in_gemmmraw_gemmkraw_desc =
             conv_to_gemm_transformer.template MakeADescriptor_M_K<Layout>();
@@ -413,11 +414,11 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
     {
         namespace ctc = tensor_layout::convolution;
         using Layout  = std::conditional_t<
-             is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-             ctc::GKYXC,
-             std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-                                ctc::GKZYXC,
-                                BLay>>;
+            is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+            ctc::GKYXC,
+            std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+                               ctc::GKZYXC,
+                               BLay>>;
 
         const auto wei_gemmnraw_gemmkraw_desc =
             conv_to_gemm_transformer.template MakeBDescriptor_N_K<Layout>();
@@ -433,11 +434,11 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
     {
         namespace ctc = tensor_layout::convolution;
         using Layout  = std::conditional_t<
-             is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-             ctc::NHWGK,
-             std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
-                                ctc::NDHWGK,
-                                ELay>>;
+            is_NGCHW_NGKHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+            ctc::NHWGK,
+            std::conditional_t<is_NGCDHW_NGKDHW<ALayout, BLayout, ELayout>() && NeedTransposeKernel,
+                               ctc::NDHWGK,
+                               ELay>>;
 
         const auto out_gemmmraw_gemmnraw_desc =
             conv_to_gemm_transformer.template MakeCDescriptor_M_N<Layout>();
@@ -1187,6 +1188,7 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
 
                     if constexpr(CTranspose)
                     {
+                        std::cout << "launch GridwiseGemmCTranspose" << std::endl;
                         const auto kernel = kernel_grouped_conv_fwd_multiple_abd_xdl_cshuffle<
                             GridwiseGemmCTranspose,
                             const BDataType*,
@@ -1484,7 +1486,7 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
                 }
             }
         }
-
+        std::cout << "ConvSpec OK" << std::endl;
         if constexpr(NumGroupsToMerge > 1)
         {
             if(!(C == 1))
@@ -1527,7 +1529,8 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
                 }
             }
         }
-        else if constexpr(is_same_v<ALayout, ctc::NGCHW> || is_same_v<ALayout, ctc::NGCDHW>)
+        else if constexpr(is_same_v<ALayout, ctc::NGCHW> || is_same_v<ALayout, ctc::NGCDHW> ||
+                          is_same_v<ALayout, ctc::GNCHW>)
         {
             static_assert(NeedTransposeKernel == false);
             static_assert(NumGroupsToMerge == 1);
@@ -1548,7 +1551,7 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
         {
             return false;
         }
-
+        std::cout << "A access OK" << std::endl;
         // check vector access of B
         // FIXME: layout
         if constexpr(is_same_v<BLayout, ctc::G_K_X_C> || is_same_v<BLayout, ctc::G_K_YX_C> ||
@@ -1568,6 +1571,8 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
         {
             return false;
         }
+        std::cout << "B access OK" << std::endl;
+
         //  check vector access of Ds
         bool valid = true;
 
@@ -1612,6 +1617,7 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
                 valid = false;
             }
         });
+        std::cout << "D access OK" << std::endl;
 
         if constexpr(NeedTransposeKernel)
         {
@@ -1669,7 +1675,8 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
                      is_same_v<ELayout, ctc::GNHWK> || is_same_v<ELayout, ctc::GNDHWK> ||
                      is_same_v<ELayout, ctc::NWGK> || is_same_v<ELayout, ctc::NHWGK> ||
                      is_same_v<ELayout, ctc::NDHWGK> || is_same_v<ELayout, ctc::NGKW> ||
-                     is_same_v<ELayout, ctc::NGKHW> || is_same_v<ELayout, ctc::NGKDHW>)
+                     is_same_v<ELayout, ctc::NGKHW> || is_same_v<ELayout, ctc::NGKDHW> ||
+                     is_same_v<ELayout, ctc::GNKHW>)
         {
             if(CTranspose == false)
             {
@@ -1693,6 +1700,8 @@ struct DeviceGroupedConvFwdMultipleABD_Xdl_CShuffle
         {
             return false;
         }
+        std::cout << "E access OK" << std::endl;
+
         if constexpr(is_same_v<AComputeDataType, ck::tf32_t> ||
                      is_same_v<BComputeDataType, ck::tf32_t>)
         {

@@ -58,51 +58,51 @@ struct GridwiseGemmPipeline_v1<1, true, true>
                                index_t num_loop)
     {
         // preload data into LDS
-        a_blockwise_copy.RunRead(a_grid_desc, a_grid_buf);
+        // a_blockwise_copy.RunRead(a_grid_desc, a_grid_buf);
         b_blockwise_copy.RunRead(b_grid_desc, b_grid_buf);
 
-        a_blockwise_copy.MoveSrcSliceWindow(a_grid_desc, a_block_copy_step);
+        // a_blockwise_copy.MoveSrcSliceWindow(a_grid_desc, a_block_copy_step);
         b_blockwise_copy.MoveSrcSliceWindow(b_grid_desc, b_block_copy_step);
 
         // Initialize C
         c_thread_buf.Clear();
 
-        a_blockwise_copy.RunWrite(a_block_desc, a_block_buf);
+        // a_blockwise_copy.RunWrite(a_block_desc, a_block_buf);
         b_blockwise_copy.RunWrite(b_block_desc, b_block_buf);
 
-        // main body
-        if constexpr(HasMainLoop)
-        {
-            index_t i = 0;
+        // // main body
+        // if constexpr(HasMainLoop)
+        // {
+        //     index_t i = 0;
 
-            do
-            {
-                a_blockwise_copy.RunRead(a_grid_desc, a_grid_buf);
+        //     do
+        //     {
+        //         a_blockwise_copy.RunRead(a_grid_desc, a_grid_buf);
 
-                block_sync_lds();
+        //         block_sync_lds();
 
-                b_blockwise_copy.RunRead(b_grid_desc, b_grid_buf);
+        //         b_blockwise_copy.RunRead(b_grid_desc, b_grid_buf);
 
-                blockwise_gemm.Run(a_block_buf, b_block_buf, c_thread_buf);
+        //         blockwise_gemm.Run(a_block_buf, b_block_buf, c_thread_buf);
 
-                block_sync_lds();
+        //         block_sync_lds();
 
-                a_blockwise_copy.MoveSrcSliceWindow(a_grid_desc, a_block_copy_step);
-                b_blockwise_copy.MoveSrcSliceWindow(b_grid_desc, b_block_copy_step);
+        //         a_blockwise_copy.MoveSrcSliceWindow(a_grid_desc, a_block_copy_step);
+        //         b_blockwise_copy.MoveSrcSliceWindow(b_grid_desc, b_block_copy_step);
 
-                a_blockwise_copy.RunWrite(a_block_desc, a_block_buf);
-                b_blockwise_copy.RunWrite(b_block_desc, b_block_buf);
+        //         a_blockwise_copy.RunWrite(a_block_desc, a_block_buf);
+        //         b_blockwise_copy.RunWrite(b_block_desc, b_block_buf);
 
-                ++i;
-            } while(i < (num_loop - 1));
-        }
+        //         ++i;
+        //     } while(i < (num_loop - 1));
+        // }
 
-        // tail
-        {
-            block_sync_lds();
+        // // tail
+        // {
+        //     block_sync_lds();
 
-            blockwise_gemm.Run(a_block_buf, b_block_buf, c_thread_buf);
-        }
+        //     blockwise_gemm.Run(a_block_buf, b_block_buf, c_thread_buf);
+        // }
     }
 };
 

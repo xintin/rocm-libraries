@@ -70,8 +70,12 @@ struct BlockwiseGemmXdlops_k0mk1_k0nk1_m0n0m1n1m2m3m4n2_v1
 
     static constexpr auto xdlops_gemm =
         XdlopsGemm<ComputeTypeA, MPerXDL, NPerXDL, KPack, ComputeTypeB, false, false>{};
+    // pntS<decltype(xdlops_gemm)> x;
 
     static constexpr index_t KPerThread = KPerBlock / xdlops_gemm.K0PerXdlops;
+    // pntS<Number<KPerThread>> x;              // 16
+    // pntS<Number<xdlops_gemm.K0PerXdlops>> y; // 2
+    // pntS<Number<KPack>> z;
 
     StaticBufferTupleOfVector<AddressSpaceEnum::Vgpr,
                               FloatAcc,
@@ -330,10 +334,12 @@ struct BlockwiseGemmXdlops_k0mk1_k0nk1_m0n0m1n1m2m3m4n2_v1
                                    make_tuple(I0, I0, I0, I0),
                                    b_thread_buf);
 
+                // pntS<Number<KPerThread>>{}; // 16
                 static_for<0, KPerThread, KPack>{}([&](auto k) {
                     vector_type<ElementDataTypeA, KPack> a_thread_vec;
                     vector_type<ElementDataTypeB, KPack> b_thread_vec;
 
+                    // pntS<Number<KPack>>{}; // 8
                     static_for<0, KPack, 1>{}([&](auto i) {
                         a_thread_vec.template AsType<ElementDataTypeA>()(i) = a_thread_buf
                             [Number<a_thread_desc_.CalculateOffset(make_tuple(0, 0, 0, k + i))>{}];

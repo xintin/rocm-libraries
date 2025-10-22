@@ -131,8 +131,10 @@ struct ThreadwiseTensorSliceTransfer_v3r1
         // TODO: don't use lambda_scalar_per_access
         constexpr auto src_scalar_per_access = generate_sequence(
             detail::lambda_scalar_per_access<SrcVectorDim, SrcScalarPerVector_>{}, Number<nDim>{});
+        // pntS<decltype(src_scalar_per_access)>{};
 
         constexpr auto src_access_lengths = SliceLengths{} / src_scalar_per_access;
+        // pntS<SliceLengths>{};
 
         static_assert(SliceLengths::At(SrcVectorDim) % (SrcScalarPerVector_) == 0,
                       "SliceLengths[SrcVectorDim] must be divisible by SrcScalarPerVector");
@@ -141,6 +143,7 @@ struct ThreadwiseTensorSliceTransfer_v3r1
 
         constexpr auto ordered_src_access_lengths =
             container_reorder_given_new2old(src_access_lengths, src_dim_access_order);
+        // pntS<decltype(ordered_src_access_lengths)>{};
 
         // make forward steps
         const auto src_forward_steps = generate_tuple(
@@ -168,8 +171,26 @@ struct ThreadwiseTensorSliceTransfer_v3r1
             },
             Number<nDim>{});
 
+        // set oob based on first coord
+        {
+            constexpr auto src_scalar_offset = to_multi_index(generate_sequence(
+                detail::lambda_scalar_step_in_vector<SrcVectorDim>{}, Number<nDim>{}));
+            const auto scalar_sweep_step = make_tensor_coordinate_step(src_desc, src_scalar_offset);
+            auto scalar_sweep_coord      = src_coord_;
+
+            static_for<0, SrcScalarPerVector_, 1>{}([&](auto idx) {
+                const bool is_src_valid =
+                    coordinate_has_valid_offset_assuming_visible_index_is_valid(src_desc,
+                                                                                scalar_sweep_coord);
+                src_oob_thread_scratch_tuple_(thread_scratch_id)
+                    .template SetAsType<bool>(make_sequence(idx), is_src_valid);
+                move_tensor_coordinate(src_desc, scalar_sweep_coord, scalar_sweep_step);
+            });
+        }
+
         // loop over tensor and copy
         static_ford<decltype(ordered_src_access_lengths)>{}([&](auto ordered_src_access_idx) {
+            // pntS<decltype(ordered_src_access_idx)>{};
             // judge move forward or move backward
             constexpr auto forward_sweep = [&]() {
                 StaticallyIndexedArray<bool, nDim> forward_sweep_;
@@ -207,10 +228,12 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 [&](auto i) { return Number<src_data_idx[i]>{}; }, Number<src_data_idx.Size()>{});
 
             // maintain a container record is_src_valid, waiting for RunWrite use.
-            const bool is_src_valid =
-                coordinate_has_valid_offset_assuming_visible_index_is_valid(src_desc, src_coord_);
-            src_oob_thread_scratch_tuple_(thread_scratch_id)
-                .template SetAsType<bool>(src_data_idx_seq, is_src_valid);
+            // const bool is_src_valid =
+            //     coordinate_has_valid_offset_assuming_visible_index_is_valid(src_desc,
+            //     src_coord_);
+            // const bool is_src_valid = true;
+            // src_oob_thread_scratch_tuple_(thread_scratch_id)
+            //     .template SetAsType<bool>(src_data_idx_seq, is_src_valid);
 
             using dst_vector_type = vector_type_maker_t<DstData, SrcScalarPerVector>;
             using dst_vector_t    = typename dst_vector_type::type;
@@ -241,27 +264,28 @@ struct ThreadwiseTensorSliceTransfer_v3r1
             };
 
             constexpr index_t elem_op_vec_len = get_elem_op_vec_len();
+            // pntS<Number<elem_op_vec_len>>{};
 
             using src_elem_op_vec_t = typename vector_type<SrcData, elem_op_vec_len>::type;
             using dst_elem_op_vec_t = typename vector_type<DstData, elem_op_vec_len>::type;
 
             using VectorSizeLookupTable    = Tuple<Sequence<>,
-                                                   Sequence<I1>,
-                                                   Sequence<I2>,
-                                                   Sequence<I2, I1>,
-                                                   Sequence<I4>,
-                                                   Sequence<I4, I1>,
-                                                   Sequence<I4, I2>,
-                                                   Sequence<I4, I2, I1>,
-                                                   Sequence<I8>,
-                                                   Sequence<I8, I1>,
-                                                   Sequence<I8, I2>,
-                                                   Sequence<I8, I2, I1>,
-                                                   Sequence<I8, I4>,
-                                                   Sequence<I8, I4, I1>,
-                                                   Sequence<I8, I4, I2>,
-                                                   Sequence<I8, I4, I2, I1>,
-                                                   Sequence<I16>>;
+                                                Sequence<I1>,
+                                                Sequence<I2>,
+                                                Sequence<I2, I1>,
+                                                Sequence<I4>,
+                                                Sequence<I4, I1>,
+                                                Sequence<I4, I2>,
+                                                Sequence<I4, I2, I1>,
+                                                Sequence<I8>,
+                                                Sequence<I8, I1>,
+                                                Sequence<I8, I2>,
+                                                Sequence<I8, I2, I1>,
+                                                Sequence<I8, I4>,
+                                                Sequence<I8, I4, I1>,
+                                                Sequence<I8, I4, I2>,
+                                                Sequence<I8, I4, I2, I1>,
+                                                Sequence<I16>>;
             using VectorOffsetsLookupTable = Tuple<Sequence<>,
                                                    Sequence<I0>,
                                                    Sequence<I0>,
@@ -279,13 +303,15 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                                                    Sequence<I0, I8, I12>,
                                                    Sequence<I0, I8, I12, I14>,
                                                    Sequence<I0>>;
-
+            // pntS<tuple_element_t<SrcScalarPerVector, VectorSizeLookupTable>>{};
             static_for<0, tuple_element_t<SrcScalarPerVector, VectorSizeLookupTable>::Size(), 1>{}(
                 [&](auto v_idx) {
                     constexpr auto VectorLoadSize =
                         tuple_element_t<SrcScalarPerVector, VectorSizeLookupTable>::At(v_idx);
+                    // pntS<decltype(VectorLoadSize)>{};
                     constexpr auto LoadOffset =
                         tuple_element_t<SrcScalarPerVector, VectorOffsetsLookupTable>::At(v_idx);
+                    // pntS<decltype(LoadOffset)>{}; // 0
 
                     using src_vector_container   = vector_type_maker_t<SrcData, VectorLoadSize>;
                     using src_vector_container_t = typename src_vector_container::type;
@@ -294,9 +320,40 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                         src_vector_container{src_buf.template Get<src_vector_container_t>(
                             src_coord_.GetOffset() / PackedSize + LoadOffset, true)};
 
+                    // static_for<0, SrcScalarPerVector_, 1>{}([&](auto idx) {
+                    //     const bool is_src_valid =
+                    //     src_oob_thread_scratch_tuple_(thread_scratch_id)
+                    //                                   .template
+                    //                                   GetAsType<bool>(make_sequence(idx));
+                    //     src_vector.template AsType<src_elem_op_vec_t>()(idx) =
+                    //         is_src_valid ? src_vector.template AsType<src_elem_op_vec_t>()[idx] :
+                    //         0;
+                    // });
+                    // pntS<Number<PackedSize>>{}; // 1
+                    if(THREAD_IDX_UB(0, 0, 0, 63))
+                    {
+                        printf("%d loads [%d %d %d - %d v%d] %f %f %f %f %f %f %f %f\n",
+                               threadIdx.x,
+                               src_coord_.GetIndex()[Number<0>{}],
+                               src_coord_.GetIndex()[Number<1>{}],
+                               src_coord_.GetIndex()[Number<2>{}],
+                               src_coord_.GetOffset(),
+                               0,
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<0>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<1>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<2>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<3>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<4>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<5>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<6>{}]),
+                               float(src_vector.template AsType<src_elem_op_vec_t>()[Number<7>{}]));
+                    }
+                    // pntS<Number<VectorLoadSize / elem_op_vec_len>>{}; // 8
                     static_for<0, VectorLoadSize / elem_op_vec_len, 1>{}([&](auto idx) {
                         // apply the src elementwise op and convert to DstData under the hood if
                         // needed
+                        const bool is_src_valid = src_oob_thread_scratch_tuple_(thread_scratch_id)
+                                                      .template GetAsType<bool>(make_sequence(idx));
                         src_element_op_(
                             op_r_v.template AsType<dst_elem_op_vec_t>()(idx + LoadOffset),
                             src_vector.template AsType<src_elem_op_vec_t>()[idx]);
@@ -308,7 +365,8 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 .template SetAsType<dst_vector_t>(src_data_idx_seq,
                                                   op_r_v.template AsType<dst_vector_t>()[I0]);
 
-            constexpr auto move_on_dim = [&]() constexpr {
+            constexpr auto move_on_dim = [&]() constexpr
+            {
                 StaticallyIndexedArray<bool, nDim> move_on_dim_;
 
                 static_for<0, nDim, 1>{}([&](auto i) {
@@ -321,7 +379,8 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 });
 
                 return move_on_dim_;
-            }();
+            }
+            ();
 
             // move src coord
             static_for<0, nDim, 1>{}([&](auto i) {
@@ -416,16 +475,18 @@ struct ThreadwiseTensorSliceTransfer_v3r1
 
             constexpr auto src_data_idx_seq = generate_sequence_v2(
                 [&](auto i) { return Number<src_data_idx[i]>{}; }, Number<src_data_idx.Size()>{});
+            // pntS<decltype(src_data_idx_seq)>{};
 
             using vector_t = typename vector_type_maker<DstData, SrcScalarPerVector>::type::type;
 
             auto op_r = src_thread_scratch_tuple_(thread_scratch_id)
                             .template GetAsType<vector_t>(src_data_idx_seq);
 
-            const bool is_src_valid = src_oob_thread_scratch_tuple_(thread_scratch_id)
-                                          .template GetAsType<bool>(src_data_idx_seq);
+            // const bool is_src_valid = src_oob_thread_scratch_tuple_(thread_scratch_id)
+            //                               .template GetAsType<bool>(src_data_idx_seq);
 
-            auto op_r_v = is_src_valid ? op_r : vector_t(0);
+            // auto op_r_v = is_src_valid ? op_r : vector_t(0);
+            auto op_r_v = op_r;
 
             src_thread_scratch_tuple_(thread_scratch_id)
                 .template SetAsType<vector_t>(src_data_idx_seq, op_r_v);
@@ -572,7 +633,7 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 return make_tensor_coordinate_step(dst_desc, backward_step_idx);
             },
             Number<nDim>{});
-
+        // pntS<decltype(ordered_dst_access_lengths)>{};
         // loop over tensor and copy
         static_ford<decltype(ordered_dst_access_lengths)>{}([&](auto ordered_dst_access_idx) {
             // judge move forward or move backward
@@ -628,13 +689,31 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 dst_element_op_(dst_v, dst_vector_container.template AsType<DstData>()[i]);
             });
 
+            // if(THREAD_IDX_UB(0, 0, 0, 63))
+            // {
+            //     printf("%d stores [%d %d %d - %d] %f %f %f %f %f %f %f %f\n",
+            //            threadIdx.x,
+            //            dst_coord_.GetIndex()[Number<0>{}],
+            //            dst_coord_.GetIndex()[Number<1>{}],
+            //            dst_coord_.GetIndex()[Number<2>{}],
+            //            dst_coord_.GetOffset(),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<0>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<1>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<2>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<3>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<4>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<5>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<6>{}]),
+            //            float(dst_vector_container.template AsType<DstData>()[Number<7>{}]));
+            // }
             // copy data from dst_vector_container to dst_buf
             dst_buf.template Set<dst_vector_t>(
                 dst_coord_.GetOffset() / PackedSize,
                 is_dst_valid,
                 dst_vector_container.template AsType<dst_vector_t>()[I0]);
 
-            constexpr auto move_on_dim = [&]() constexpr {
+            constexpr auto move_on_dim = [&]() constexpr
+            {
                 StaticallyIndexedArray<bool, nDim> move_on_dim_;
 
                 static_for<0, nDim, 1>{}([&](auto i) {
@@ -647,7 +726,8 @@ struct ThreadwiseTensorSliceTransfer_v3r1
                 });
 
                 return move_on_dim_;
-            }();
+            }
+            ();
 
             // move dst coord
             static_for<0, nDim, 1>{}([&](auto i) {
@@ -934,7 +1014,8 @@ struct ThreadwiseTensorSliceTransfer_v3r1
     private:
     static constexpr auto src_thread_scratch_desc_ = decltype(GetSrcThreadScratchDescriptor()){};
     static constexpr auto src_oob_thread_scratch_desc_ =
-        decltype(GetSrcThreadScratchDescriptor()){};
+        // decltype(GetSrcThreadScratchDescriptor()){};
+        decltype(make_naive_tensor_descriptor_packed(make_tuple(SrcScalarPerVector))){};
     static constexpr auto dst_thread_scratch_desc_ = decltype(GetDstThreadScratchDescriptor()){};
 
     using SrcThreadScratch =

@@ -2195,10 +2195,13 @@ struct XdlopsGemm
                                               is_scale_mfma>{};
 
     static constexpr auto mfma_instr = mfma.selected_mfma;
+    // pntS<decltype(mfma_instr)> x; // mfma_f32_32x32x8f16
 
     static constexpr auto KPerXdlops  = mfma.GetKPerXdlops();
     static constexpr auto K1PerXdlops = mfma.GetK1PerXdlops();
     static constexpr auto K0PerXdlops = KPerXdlops / K1PerXdlops;
+    // pntS<Number<KPerXdlops>> x; // 8
+    // pntS<Number<K1PerXdlops>> x; // 4
 
     __host__ __device__ static constexpr auto GetCM0M1M2NThreadBlkLengths()
     {
