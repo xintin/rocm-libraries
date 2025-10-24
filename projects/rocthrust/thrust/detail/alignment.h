@@ -34,7 +34,7 @@
 
 #if _THRUST_HAS_DEVICE_SYSTEM_STD
 #  include _THRUST_LIBCXX_INCLUDE(cmath)
-#else
+#elif _THRUST_USE_ROCPRIM
 #  include <rocprim/detail/various.hpp>
 #endif
 
@@ -81,9 +81,12 @@ THRUST_HOST_DEVICE T aligned_reinterpret_cast(U u)
 THRUST_HOST_DEVICE inline _THRUST_STD::size_t aligned_storage_size(_THRUST_STD::size_t n, _THRUST_STD::size_t align)
 {
 #if _THRUST_HAS_DEVICE_SYSTEM_STD
+<<<<<<< HEAD
   return _THRUST_LIBCXX::ceil_div(n, align) * align;
-#else
+#elif _THRUST_USE_ROCPRIM
   return ::rocprim::detail::ceiling_div(n, align) * align;
+#else
+  return (n / align + (n % align > 0 ? 1 : 0)) * align;
 #endif
 }
 } // end namespace detail

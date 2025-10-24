@@ -236,25 +236,27 @@ function(fetch_dep method repo_name repo_path download_branch)
   endif()
 endfunction()
 
-fetch_dep(ROCPRIM_FETCH_METHOD rocprim ROCPRIM_PATH ROCM_DEP_RELEASE_BRANCH)
+if(${ROCTHRUST_DEVICE_SYSTEM} STREQUAL "HIP")
+  fetch_dep(ROCPRIM_FETCH_METHOD rocprim ROCPRIM_PATH ROCM_DEP_RELEASE_BRANCH)
 
-# If rocPRIM was found in the monorepo tree or was downloaded, we need to build it.
-# Set up download_project to build from the existing rocprim directory at ${ROCPRIM_PATH}.
-# Note that since we don't set any download-related options, nothing is actually downloaded here - just built.
-if(${ROCPRIM_FETCH_METHOD} STREQUAL "MONOREPO" OR ${ROCPRIM_FETCH_METHOD} STREQUAL "DOWNLOAD")
-  download_project(
-    PROJ                rocprim
-    SOURCE_DIR          ${ROCPRIM_PATH}
-    INSTALL_DIR         ${CMAKE_CURRENT_BINARY_DIR}/deps/rocprim
-    CMAKE_ARGS          -DBUILD_TEST=OFF -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DCMAKE_PREFIX_PATH=/opt/rocm
-    LOG_CONFIGURE       TRUE
-    LOG_BUILD           TRUE
-    LOG_INSTALL         TRUE
-    BUILD_PROJECT       TRUE
-    STATUS_MSG          "Building"
-  )
+  # If rocPRIM was found in the monorepo tree or was downloaded, we need to build it.
+  # Set up download_project to build from the existing rocprim directory at ${ROCPRIM_PATH}.
+  # Note that since we don't set any download-related options, nothing is actually downloaded here - just built.
+  if(${ROCPRIM_FETCH_METHOD} STREQUAL "MONOREPO" OR ${ROCPRIM_FETCH_METHOD} STREQUAL "DOWNLOAD")
+    download_project(
+      PROJ                rocprim
+      SOURCE_DIR          ${ROCPRIM_PATH}
+      INSTALL_DIR         ${CMAKE_CURRENT_BINARY_DIR}/deps/rocprim
+      CMAKE_ARGS          -DBUILD_TEST=OFF -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DCMAKE_PREFIX_PATH=/opt/rocm
+      LOG_CONFIGURE       TRUE
+      LOG_BUILD           TRUE
+      LOG_INSTALL         TRUE
+      BUILD_PROJECT       TRUE
+      STATUS_MSG          "Building"
+    )
 
-  find_package(rocprim REQUIRED CONFIG PATHS ${CMAKE_CURRENT_BINARY_DIR}/deps/rocprim NO_DEFAULT_PATH)
+    find_package(rocprim REQUIRED CONFIG PATHS ${CMAKE_CURRENT_BINARY_DIR}/deps/rocprim NO_DEFAULT_PATH)
+  endif()
 endif()
 
 # Test dependencies
