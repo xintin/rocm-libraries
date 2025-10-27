@@ -274,7 +274,7 @@ def hasCustomSchedule(kernel):
     is256x256x64DTL  = [MT0, MT1, DU, PGR, PLR, DTL] == [256, 256, 64, 2, 1, True]
     is192x256x64DTL  = [MT0, MT1, DU, PGR, PLR, DTL] == [192, 256, 64, 2, 1, True]
     is256x256x128DTL = [MT0, MT1, DU, PGR, PLR, DTL] == [256, 256, 128, 2, 0, True]
-
+    is224x256x64DTL  = [MT0, MT1, DU, PGR, PLR, DTL] == [224, 256, 64, 2, 1, True]
 
     transA = kernel["ProblemType"]["TransposeA"]
     transB = kernel["ProblemType"]["TransposeB"]
@@ -515,5 +515,35 @@ def hasCustomSchedule(kernel):
         numMfma = 96
         opt1 = ScheduleInfo(2, numMfma, optSchedule, syncCode)
         return True, opt1
+    elif is224x256x64DTL and is16bit and not isMixed and ([GRVWA, GRVWB, LRVW] == [8, 8, 8]) and MI == [16, 16, 32, 1] and MIWG == [2, 2]:
+        if isTN and TLDS == 1:
+            optSchedule = {
+                'SYNC'   : [[ 21,  21,  55,  55,  55,  83,  83]],
+                'GRIncA' : [[  1,   3,   5,   7,   9,  11,  13,  15,  17]],
+                'GRIncB' : [[  1,   3,   5,   7,   9,  11,  13,  15,  17]],
+                'LRA0'   : [[  0,   2,   4,   6,   8,  10,  12]],
+                'LRB0'   : [[ 14,  16,  18,  20,  22,  24,  26,  28]],
+                'LRA1'   : [[ 57,  59,  61,  63,  65,  67,  69]],
+                'LRB1'   : [[ 84,  85,  86,  87,  88,  89,  90,  91]],
+                'GRA'    : [[ 23,  23,  25,  25,  29,  29,  33,  33,  37,  37,  41,  41,  45,  45]],
+                'GRB'    : [[ 56,  56,  58,  58,  62,  62,  66,  66,  70,  70,  74,  74,  78,  78,  82,  82]],
+                'LRSA'   : [[ 53]],
+                'LRSB'   : [[ 54]],
+                'LWSA'   : [[109]],
+                'LWSB'   : [[110]],
+                'LCC'    : [[111, 111]]
+            }
+            syncCode = [
+                SWaitCnt(dscnt= 4, vlcnt=-1, vscnt=-1, comment="Wait for LRAs"),
+                SBarrier(comment=""),
+                SWaitCnt(dscnt= 0, vlcnt=-1, vscnt=-1, comment="Wait for LRBs"),
+                SWaitCnt(dscnt=-1, vlcnt=15, vscnt=-1, comment="Wait for previous set of GRs"),
+                SBarrier(comment=""),
+                SWaitCnt(dscnt= 0, vlcnt=15, vscnt=-1, comment="Wait for previous set of GRs"),
+                SBarrier(comment=""),
+            ]
+            numMfma = 112
+            opt1 = ScheduleInfo(1, numMfma, optSchedule, syncCode)
+            return True, opt1
 
     return False, None
