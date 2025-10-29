@@ -33,10 +33,10 @@
 #include <miopen/solver_id.hpp>
 #include <miopen/stringutils.hpp>
 
-#include <ostream>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <ostream>
 #include <string_view>
 
 MIOPEN_DECLARE_ENV_VAR_STR(MIOPEN_FIND_ENFORCE)
