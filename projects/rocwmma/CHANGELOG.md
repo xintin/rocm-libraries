@@ -3,12 +3,27 @@
 Documentation for rocWMMA is available at
 [https://rocm.docs.amd.com/projects/rocWMMA/en/latest](https://rocm.docs.amd.com/projects/rocWMMA/en/latest).
 
-## (Unreleased) rocWMMA 2.1.0 for ROCm 7.1.0
+## (Unreleased) rocWMMA 2.2.0 for ROCm 7.2.0
+
+### Added
+
+* Added sample `perf_i8gemm` to demonstrate `int8_t` as matrix input data type.
+* Added support for the gfx1150 target
+
+### Changed
+
+
+### Removed
+
+
+### Resolved issues
+
+
+## rocWMMA 2.1.0 for ROCm 7.1.1
 
 ### Added
 
 * Added more unit tests to increase the code coverage.
-* Added sample `perf_i8gemm` to demonstrate `int8_t` as matrix input data type.
 
 ### Changed
 
