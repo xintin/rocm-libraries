@@ -278,7 +278,6 @@ namespace TensileLite
 
     DataTypeInfo const& DataTypeInfo::Get(std::string const& str)
     {
-        std::cout << "RK: GET: " << str << std::endl;
         registerAllTypeInfoOnce();
 
         auto* typeNames = getTypeNames();

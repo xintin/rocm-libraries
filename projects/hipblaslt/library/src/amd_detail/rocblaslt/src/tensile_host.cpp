@@ -550,8 +550,6 @@ namespace
                                      bool                   isGroupedGemm,
                                      size_t                 maxWorkspaceBytes)
     {
-        std::cout<<"RK: CreateTensileProblem 1" << std::endl;
-
         auto                          typeATensile = hip2TensileType(typeA);
         auto                          typeBTensile = hip2TensileType(typeB);
         std::vector<rocisa::DataType> biasDataTypeWhiteList; // dummy
@@ -575,8 +573,6 @@ namespace
             biasSrcWhiteList,
             isGroupedGemm,
             maxWorkspaceBytes);
-                    std::cout<<"RK: CreateTensileProblem 2" << std::endl;
-
     }
 
     const char* tensileComputeInputType_to_bench_string(rocisa::DataType typeCompute,
@@ -1671,6 +1667,7 @@ namespace
     void updateTensileProblem(const RocblasltContractionProblem&   prob,
                               TensileLite::ContractionProblemGemm& tensileProblem)
     {
+
         auto a_type       = hipDataType_to_tensile_type(prob.a_type);
         auto b_type       = hipDataType_to_tensile_type(prob.b_type);
         auto c_type       = hipDataType_to_tensile_type(prob.c_type);
@@ -2462,14 +2459,10 @@ void initTensileGemmData(rocblaslt_handle       handle,
                          size_t                 maxWorkspaceBytes,
                          std::shared_ptr<void>& gemmData)
 {
-        std::cout<<"RK: initTensileGemmData 1 " << std::endl;
-
     float alpha = 1.0;
     float beta  = 1.0;
     if(gemmType == rocblaslt::RocGemmType::ROCBLASLT_GEMM)
     {
-                    std::cout<<"RK: initTensileGemmData 2" << std::endl;
-
         TensileDataGemm data;
         data.problem = CreateTensileProblem(opA,
                                             opB,
@@ -2487,8 +2480,6 @@ void initTensileGemmData(rocblaslt_handle       handle,
     }
     else if(gemmType == rocblaslt::RocGemmType::ROCBLASLT_GROUPED_GEMM)
     {
-                    std::cout<<"RK: initTensileGemmData 3" << std::endl;
-
         TensileDataGroupedGemm                      data;
         TensileLite::ContractionProblemGroupedGemm& tensile_probs = data.problem;
         TensileLite::ContractionGroupedInputs&      groupedInputs = data.inputs;
@@ -2514,8 +2505,6 @@ void initTensileGemmData(rocblaslt_handle       handle,
         gemmData = std::static_pointer_cast<void>(std::make_shared<TensileDataGroupedGemm>(data));
         return;
     }
-            std::cout<<"RK: initTensileGemmData 4" << std::endl;
-
     throw std::runtime_error("Gemm problem type initialization not implemented.");
 }
 

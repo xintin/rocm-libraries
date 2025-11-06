@@ -1751,7 +1751,6 @@ rocblaslt_status
                                         rocblaslt_matmul_heuristic_result heuristicResultsArray[],
                                         int*                              returnAlgoCount)
 {
-    std::cout<<"RK: rocblaslt_matmul_algo_get_heuristic 1" << std::endl;
     // Check if handle is valid
     if(handle == nullptr || matmul_desc == nullptr || pref == nullptr || matA == nullptr
        || matB == nullptr || matC == nullptr || matD == nullptr)
@@ -1784,20 +1783,14 @@ rocblaslt_status
             dummy_bias_address = true;
             matmul_desc->bias  = &dummy_bias_address;
         }
-            std::cout<<"RK: construct_rocblaslt_problem 0" << std::endl;
 
         auto prob = construct_rocblaslt_problem(
             handle, matmul_desc, matA, matB, matC, matD, &alpha, &beta, pref->max_workspace_bytes);
-                        std::cout<<"RK: construct_rocblaslt_problem 2" << std::endl;
-
-                    std::cout<<"RK: A 0" << std::endl;
 
         OverrideSingleton& override         = OverrideSingleton::getInstance();
         bool               override_success = false;
         if(override.env_mode)
         {
-                                std::cout<<"RK: A 1" << std::endl;
-
             override_success = problem_override_from_file(handle,
                                                           prob,
                                                           matmul_desc,
@@ -1809,12 +1802,9 @@ rocblaslt_status
 
             log_api(__func__, "OverrideAlgoCount", override_success ? 1 : 0);
         }
-                                std::cout<<"RK: A 2" << std::endl;
 
         if(requestedAlgoCount > 0)
         {
-                                            std::cout<<"RK: A 3" << std::endl;
-
             status = getBestSolutions(prob,
                                       handle,
                                       tensile_data,
@@ -1827,9 +1817,6 @@ rocblaslt_status
 
         if(override_success)
         {
-                                            std::cout<<"RK: A 4" << std::endl;
-
-
             int oriReturnAlgoCount = *returnAlgoCount;
             if(!heuristicResult_check_duplicated(
                    &heuristicResultsArray[1], &heuristicResultsArray[0], oriReturnAlgoCount, true))
@@ -1839,12 +1826,10 @@ rocblaslt_status
 
             requestedAlgoCount++;
         }
-                                std::cout<<"RK: A 5" << std::endl;
 
         if(dummy_bias_address)
             matmul_desc->bias = nullptr;
         log_api(__func__, "returnAlgoCount", *returnAlgoCount);
-                                        std::cout<<"RK: A 6" << std::endl;
 
         //Try to get size independent solutions from getAllSolutions()
         if(requestedAlgoCount > *returnAlgoCount)
@@ -1853,8 +1838,6 @@ rocblaslt_status
             if(rocblaslt_status_success
                == getAllSolutions(prob, handle, allSolutionsResults, pref->max_workspace_bytes))
             {
-                                                std::cout<<"RK: A 7" << std::endl;
-
                 int oriReturnAlgoCount = *returnAlgoCount;
                 for(int i = 0;
                     *returnAlgoCount < requestedAlgoCount && i < allSolutionsResults.size();
@@ -1880,12 +1863,9 @@ rocblaslt_status
                                          required_workspace_size);
                     (*returnAlgoCount)++;
                 }
-                                                std::cout<<"RK: A 8" << std::endl;
-
                 log_api(__func__, "final returnAlgoCount", *returnAlgoCount);
             }
         }
-            std::cout<<"RK: rocblaslt_matmul_algo_get_heuristic 2" << std::endl;
 
         if(status != rocblaslt_status_success)
         {
@@ -1915,8 +1895,6 @@ void rocblaslt_init_gemmData(rocblaslt_handle       handle,
                              size_t                 maxWorkspaceBytes,
                              std::shared_ptr<void>& gemmData)
 {
-    std::cout<<"RK: rocblaslt_init_gemmData 1 " << std::endl;
-
     initTensileGemmData(handle,
                         gemmType,
                         opA,
@@ -1928,7 +1906,6 @@ void rocblaslt_init_gemmData(rocblaslt_handle       handle,
                         typeCompute,
                         maxWorkspaceBytes,
                         gemmData);
-     std::cout<<"RK: rocblaslt_init_gemmData 2 " << std::endl;
 
 }
 

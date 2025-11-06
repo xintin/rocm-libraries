@@ -360,7 +360,6 @@ namespace TensileLite
 
         rocisa::DataType dataType() const
         {
-            std::cout<<"RK: datatype: " << m_dataType << std::endl;
             return m_dataType;
         }
 
