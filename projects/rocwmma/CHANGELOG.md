@@ -7,13 +7,15 @@ Documentation for rocWMMA is available at
 
 ### Added
 
-* Added sample `perf_i8gemm` to demonstrate `int8_t` as matrix input data type.
+* Added sample `perf_i8gemm` to demonstrate `int8_t` as matrix input data type
 * Added support for the gfx1150 target
 
 ### Changed
 
 * Removed unnecessary const keyword to avoid compiler warnings
-* GTest dependency has been updated to v1.16.0
+* rocWMMA has been moved into the new rocm-libraries "monorepo" repository (https://github.com/ROCm/rocm-libraries). This repository consolidates a number of separate ROCm libraries and shared components.
+  * The repository migration requires a few changes to the CMake configuration of rocWMMA
+  * The repository migration rquired the GTest dependency to be updated to v1.16.0
 
 ### Resolved issues
 
