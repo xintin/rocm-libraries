@@ -13,6 +13,7 @@ Documentation for rocWMMA is available at
 ### Changed
 
 * Removed unnecessary const keyword to avoid compiler warnings
+* GTest dependency has been updated to v1.16.0
 
 ### Resolved issues
 
