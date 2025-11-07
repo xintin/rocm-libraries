@@ -12,12 +12,12 @@ Documentation for rocWMMA is available at
 
 ### Changed
 
-
-### Removed
-
+* Removed unnecessary const keyword to avoid compiler warnings
 
 ### Resolved issues
 
+* Skip invalid test configurations when using 'register file' LDS mapping
+* Ensured transform functions in samples are only available on the device
 
 ## rocWMMA 2.1.0 for ROCm 7.1.1
 
