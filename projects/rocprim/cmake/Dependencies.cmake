@@ -184,7 +184,7 @@ else()
 endif()
 
 
-# rocRAND (https://github.com/ROCmSoftwarePlatform/rocRAND)
+# rocRAND (https://github.com/ROCm/rocm-libraries/tree/develop/projects/rocrand)
 if(WITH_ROCRAND)
   find_package(rocrand QUIET)
 endif()
@@ -202,7 +202,7 @@ if(WITH_ROCRAND AND NOT rocrand_FOUND)
   endif()
   download_project(
     PROJ                  rocrand
-    GIT_REPOSITORY        https://github.com/ROCmSoftwarePlatform/rocRAND.git
+    GIT_REPOSITORY        https://github.com/ROCm/rocm-libraries.git
     GIT_TAG               develop
     GIT_SHALLOW           TRUE
     INSTALL_DIR           ${ROCRAND_ROOT}

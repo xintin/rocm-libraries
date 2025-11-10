@@ -52,7 +52,7 @@ def local_amdgpu_target():
 def build_rocfft(
         commit,
         dest=None,
-        repo='git@github.com:ROCmSoftwarePlatform/rocFFT-internal.git'):
+        repo='git@github.com:ROCm/rocFFT-internal.git'):
     """Build public rocFFT (at specified git `commit`) and install into `dest`."""
 
     top = Path('.').resolve() / ('rocFFT-' + commit)

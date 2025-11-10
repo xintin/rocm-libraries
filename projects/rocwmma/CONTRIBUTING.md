@@ -169,7 +169,7 @@ The typical workflow for creating a rocWMMA pull request is as follows:
     ...
     ```
 
-3. Create a pull request to the ROCmSoftwarePlatform/rocWMMA develop branch.
+3. Create a pull request to the [ROCm/rocWMMA](https://github.com/ROCm/rocm-libraries/tree/develop/projects/rocwmma) develop branch.
 4. Await CI and approval feedback.
 5. Once approved, merge.
 

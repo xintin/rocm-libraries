@@ -1,7 +1,7 @@
 # Copyright Advanced Micro Devices, Inc., or its affiliates.
 # SPDX-License-Identifier:  MIT
 
-name: rocmsoftwareplatform/rocroller-lib
+name: ROCm/rocroller-lib
 library: true
 version: 0.0.1
 libraryPathDependencies:
