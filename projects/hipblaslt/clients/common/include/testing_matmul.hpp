@@ -1596,7 +1596,6 @@ void testing_matmul_with_bias(const Arguments& arg,
             hipblasLtMatmulDescSetAttribute(
                 matmul[0][i], HIPBLASLT_MATMUL_DESC_COMPUTE_INPUT_TYPE_B_EXT, &TciB, sizeof(void*)),
             HIPBLAS_STATUS_SUCCESS);
-
         CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescSetAttribute(
             matmul[0][i], HIPBLASLT_MATMUL_DESC_TRANSA, &transA, sizeof(int32_t)));
         CHECK_HIPBLASLT_ERROR(hipblasLtMatmulDescSetAttribute(
@@ -1891,7 +1890,7 @@ void testing_matmul_with_bias(const Arguments& arg,
                                               A_row[i],
                                               A_col[i],
                                               lda[i],
-                                              transA == HIPBLAS_OP_T,
+                                              transA != HIPBLAS_OP_N,
                                               arg.scaleABlockRowSize,
                                               arg.scaleABlockColSize,
                                               true,
@@ -1942,7 +1941,7 @@ void testing_matmul_with_bias(const Arguments& arg,
                                               B_row[i],
                                               B_col[i],
                                               ldb[i],
-                                              transB == HIPBLAS_OP_T,
+                                              transB != HIPBLAS_OP_N,
                                               arg.scaleBBlockRowSize,
                                               arg.scaleBBlockColSize,
                                               false,

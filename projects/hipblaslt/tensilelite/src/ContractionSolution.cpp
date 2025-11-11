@@ -211,6 +211,7 @@ namespace TensileLite
     {
         for(int i = 0; i < problems.size(); i++)
         {
+            std::cout<<"RK AOps : " << problems[i].aOps() << std::endl;
             const TensorDescriptor& e = problems[i].tensor(ContractionProblemGemm::TENSOR::E);
             const TensorDescriptor& d = problems[i].d();
             const TensorDescriptor& c = problems[i].c();

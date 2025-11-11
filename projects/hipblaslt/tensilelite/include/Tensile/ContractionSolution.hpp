@@ -166,7 +166,7 @@ namespace TensileLite
     struct StreamKSettings
     {
         origami::streamk::reduction_type reduction = origami::streamk::reduction_type::Tree;
-        size_t grid = 0;
+        size_t                           grid      = 0;
     };
 
     /**
@@ -284,14 +284,22 @@ namespace TensileLite
 
         size_t requiredSynchronizerSize(Problem const& problem, Hardware const& hardware) const;
 
-        origami::streamk::reduction_type getSKReduction(Problem const& problem, Hardware const& hardware) const;
-        size_t getSKGrid(Problem const& problem, Hardware const& hardware, size_t tiles, origami::streamk::reduction_type reductionStrat) const;
-        size_t partialTileSize(size_t skGrid) const;
+        origami::streamk::reduction_type getSKReduction(Problem const&  problem,
+                                                        Hardware const& hardware) const;
+        size_t                           getSKGrid(Problem const&                   problem,
+                                                   Hardware const&                  hardware,
+                                                   size_t                           tiles,
+                                                   origami::streamk::reduction_type reductionStrat) const;
+        size_t                           partialTileSize(size_t skGrid) const;
 
         static float computeGranularity(float x);
 
-        Granularities computeGranularities(
-            Hardware const& hardware, double M, double N, double K, double NumBatches, uint32_t autoGsuVal) const;
+        Granularities computeGranularities(Hardware const& hardware,
+                                           double          M,
+                                           double          N,
+                                           double          K,
+                                           double          NumBatches,
+                                           uint32_t        autoGsuVal) const;
 
         StaticPerformanceModel staticPerformanceModel(double M,
                                                       double N,
@@ -508,11 +516,11 @@ namespace TensileLite
             std::vector<int>              biasSrcWhiteList;
             std::vector<rocisa::DataType> biasDataTypeWhiteList;
 
-            int  sparse                     = 0;
-            bool stochasticRounding         = false;
-            bool supportDeviceUserArguments = false;
-            bool swizzleTensorA             = false;
-            bool swizzleTensorB             = false;
+            int                    sparse                     = 0;
+            bool                   stochasticRounding         = false;
+            bool                   supportDeviceUserArguments = false;
+            bool                   swizzleTensorA             = false;
+            bool                   swizzleTensorB             = false;
         };
 
         struct LinearModel

@@ -248,16 +248,16 @@ RocblasltContractionProblem::RocblasltContractionProblem(hipblasOperation_t     
         this->aux_type = this->d_type;
     }
 
-    if(this->trans_a == HIPBLAS_OP_C)
+/*     if(this->trans_a == HIPBLAS_OP_C)
     {
         if(rocblaslt_is_complex_datatype(this->a_type))
-            this->trans_a = HIPBLAS_OP_T;
+            this->trans_a = HIPBLAS_OP_C;
     }
     if(this->trans_b == HIPBLAS_OP_C)
     {
         if(rocblaslt_is_complex_datatype(this->b_type))
-            this->trans_b = HIPBLAS_OP_T;
-    }
+            this->trans_b = HIPBLAS_OP_C;
+    } */
 }
 
 namespace
@@ -398,7 +398,7 @@ namespace
             return rocisa::DataType::Float8;
         case HIP_C_32F:
             return rocisa::DataType::ComplexFloat;
-        case HIP_C_64F: 
+        case HIP_C_64F:
             return rocisa::DataType::ComplexDouble;
         default:
             throw std::runtime_error("Unsupported type.");
@@ -554,6 +554,19 @@ namespace
         auto                          typeBTensile = hip2TensileType(typeB);
         std::vector<rocisa::DataType> biasDataTypeWhiteList; // dummy
         std::vector<int>              biasSrcWhiteList; // dummy
+
+        TensileLite::TensorOps aOps, bOps, cOps, dOps;
+
+        if(opA == HIPBLAS_OP_C)
+        {
+            aOps = {TensileLite::TensorOp::ComplexConjugate()};
+        }
+
+        if(opB == HIPBLAS_OP_C)
+        {
+            bOps={TensileLite::TensorOp::ComplexConjugate()};
+        }
+
         return TensileLite::ContractionProblemGemm::createDefaultProblem(
             (opA != HIPBLAS_OP_N),
             (opB != HIPBLAS_OP_N),
@@ -572,7 +585,11 @@ namespace
             biasDataTypeWhiteList,
             biasSrcWhiteList,
             isGroupedGemm,
-            maxWorkspaceBytes);
+            maxWorkspaceBytes,
+            aOps,
+            bOps,
+            cOps,
+            dOps);
     }
 
     const char* tensileComputeInputType_to_bench_string(rocisa::DataType typeCompute,
@@ -714,7 +731,7 @@ namespace
                 : "",
             problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides().size()
                 ? std::to_string(
-                    problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides()[1])
+                      problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides()[1])
                 : "",
             "--stride_a",
             problem.a().strides()[2],
@@ -729,7 +746,7 @@ namespace
                 : "",
             problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides().size()
                 ? std::to_string(
-                    problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides()[2])
+                      problem.tensor(TensileLite::ContractionProblemGemm::TENSOR::E).strides()[2])
                 : "",
             "--alpha",
             ToString(inputs.alpha),
@@ -2085,7 +2102,7 @@ namespace
             return m_devicePropMap.at(deviceName);
         }
 #else
-        auto&                            get_device_property() const
+        auto& get_device_property() const
         {
             return m_deviceProp;
         }
@@ -2571,6 +2588,11 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
         int* solutionIndex = (int*)algo->data;
         data->algoIndex    = *solutionIndex;
         data->inputs       = GetTensileInputs(prob);
+        
+        if(prob.trans_a == HIPBLAS_OP_C)
+            data->problem.setAOps({TensileLite::TensorOp::ComplexConjugate()});
+        if(prob.trans_b == HIPBLAS_OP_C)
+            data->problem.setBOps({TensileLite::TensorOp::ComplexConjugate()});
 
         if((get_logger_layer_mode() & rocblaslt_layer_mode_log_bench)
            || rocblaslt::Debug::Instance().printLogAsMarker()
@@ -2615,6 +2637,7 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
         }
 
         auto solution = library->getSolutionByIndex(data->problem, *hardware, *solutionIndex);
+        
         if(prob.workspaceSize < solution->requiredWorkspaceSize(data->problem, *hardware))
         {
             if(get_logger_layer_mode() & rocblaslt_layer_mode_log_info)
@@ -2631,7 +2654,7 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
         if(getenv("HIPBLASLT_BENCH_PERF") != nullptr
            || getenv("HIPBLASLT_BENCH_PERF_ALL") != nullptr)
         {
-            auto autoGsuVal = solution->calculateAutoGSU(data->problem, &(*hardware));
+            auto autoGsuVal  = solution->calculateAutoGSU(data->problem, &(*hardware));
             auto Granularity = solution->computeGranularities(
                 *hardware,
                 data->problem.c().sizes()[0],

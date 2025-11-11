@@ -401,6 +401,7 @@ void testing_aux_matmul_set_get_attr(const Arguments& arg)
     // For HIPBLASLT_MATMUL_DESC_TRANSA
     hipblasOperation_t transA   = HIPBLAS_OP_T;
     hipblasOperation_t transA_r = HIPBLAS_OP_N;
+    //RK: hipblasOperation_t transA_c = HIPBLAS_ON_C;
 
     EXPECT_HIPBLAS_STATUS(
         hipblasLtMatmulDescSetAttribute(matmul, HIPBLASLT_MATMUL_DESC_TRANSA, &transA, 0),

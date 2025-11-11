@@ -920,7 +920,6 @@ namespace hipblaslt_ext
                hipblasComputeType_t typeCompute)
         : GemmInstance(handle, GemmType::HIPBLASLT_GEMM)
     {
-
         rocblaslt::Debug::Instance().markerStart("hipblasLtCreateGemmCpp");
         m_problem_types.push_back({opA, opB, typeA, typeB, typeC, typeD, typeCompute});
         

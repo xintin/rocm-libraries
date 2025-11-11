@@ -221,7 +221,6 @@ rocblaslt_status rocblaslt_matmul_impl(const rocblaslt_handle       handle,
                                         handle->Synchronizer,
                                         swizzleA,
                                         swizzleB};
-
     return runContractionProblem(handle, algo, problem, gemmData);
 }
 
@@ -799,6 +798,7 @@ rocblaslt_status rocblaslt_matmul(rocblaslt_handle             handle,
                   "stream",
                   stream);
     }
+
     return rocblaslt_matmul_impl(handle,
                                  matmul_descr,
                                  A,

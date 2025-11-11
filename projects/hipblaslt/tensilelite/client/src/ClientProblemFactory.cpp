@@ -73,7 +73,7 @@ namespace TensileLite
                     m_bOps,
                     m_cOps,
                     m_dOps);
-
+                std::cout<<"RK : isComplex.size() : " << isComplex.size() << std::endl;
                 for(size_t i = 0; i < isComplex.size(); i++)
                 {
                     if(isComplex[i])

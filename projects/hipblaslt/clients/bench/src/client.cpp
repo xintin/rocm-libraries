@@ -435,11 +435,11 @@ try
 
         ("transA",
          value<char>(&arg.transA)->default_value('N'),
-         "N = no transpose, T = transpose")
+         "N = no transpose, T = transpose, C = conjugate transpose")
 
         ("transB",
          value<char>(&arg.transB)->default_value('N'),
-         "N = no transpose, T = transpose")
+         "N = no transpose, T = transpose, C = conjugate transpose")
 
         ("swizzleA",
          value<bool>(&arg.swizzle_a)->default_value(false),
