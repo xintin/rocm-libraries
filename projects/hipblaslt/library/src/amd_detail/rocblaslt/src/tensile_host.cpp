@@ -247,17 +247,6 @@ RocblasltContractionProblem::RocblasltContractionProblem(hipblasOperation_t     
     {
         this->aux_type = this->d_type;
     }
-
-/*     if(this->trans_a == HIPBLAS_OP_C)
-    {
-        if(rocblaslt_is_complex_datatype(this->a_type))
-            this->trans_a = HIPBLAS_OP_C;
-    }
-    if(this->trans_b == HIPBLAS_OP_C)
-    {
-        if(rocblaslt_is_complex_datatype(this->b_type))
-            this->trans_b = HIPBLAS_OP_C;
-    } */
 }
 
 namespace
@@ -558,14 +547,10 @@ namespace
         TensileLite::TensorOps aOps, bOps, cOps, dOps;
 
         if(opA == HIPBLAS_OP_C)
-        {
             aOps = {TensileLite::TensorOp::ComplexConjugate()};
-        }
 
         if(opB == HIPBLAS_OP_C)
-        {
-            bOps={TensileLite::TensorOp::ComplexConjugate()};
-        }
+            bOps = {TensileLite::TensorOp::ComplexConjugate()};
 
         return TensileLite::ContractionProblemGemm::createDefaultProblem(
             (opA != HIPBLAS_OP_N),
@@ -1763,6 +1748,12 @@ namespace
                                    {prob.m, prob.n, prob.batch_count},
                                    {prob.row_stride_d, prob.col_stride_d, prob.batch_stride_d});
 
+        if(prob.trans_a == HIPBLAS_OP_C)
+            tensileProblem.setAOps({TensileLite::TensorOp::ComplexConjugate()});
+    
+        if(prob.trans_b == HIPBLAS_OP_C)
+            tensileProblem.setBOps({TensileLite::TensorOp::ComplexConjugate()});
+
         double alpha = 0, beta = 0;
         assignAlphaBeta(compute_type, prob.alpha, prob.beta, &alpha, &beta);
 
@@ -2567,6 +2558,12 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
 
         std::shared_ptr<TensileDataGemm> data = std::static_pointer_cast<TensileDataGemm>(gemmData);
         rocblaslt_matmul_heuristic_result heuristicResult;
+
+        if(prob.trans_a == HIPBLAS_OP_C)
+            data->problem.setAOps({TensileLite::TensorOp::ComplexConjugate()});
+        if(prob.trans_b == HIPBLAS_OP_C)
+            data->problem.setBOps({TensileLite::TensorOp::ComplexConjugate()});
+
         if(algo == nullptr)
         {
             int returnAlgoCount;
@@ -2588,11 +2585,6 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
         int* solutionIndex = (int*)algo->data;
         data->algoIndex    = *solutionIndex;
         data->inputs       = GetTensileInputs(prob);
-        
-        if(prob.trans_a == HIPBLAS_OP_C)
-            data->problem.setAOps({TensileLite::TensorOp::ComplexConjugate()});
-        if(prob.trans_b == HIPBLAS_OP_C)
-            data->problem.setBOps({TensileLite::TensorOp::ComplexConjugate()});
 
         if((get_logger_layer_mode() & rocblaslt_layer_mode_log_bench)
            || rocblaslt::Debug::Instance().printLogAsMarker()
@@ -2637,7 +2629,7 @@ rocblaslt_status runContractionProblem(rocblaslt_handle                   handle
         }
 
         auto solution = library->getSolutionByIndex(data->problem, *hardware, *solutionIndex);
-        
+
         if(prob.workspaceSize < solution->requiredWorkspaceSize(data->problem, *hardware))
         {
             if(get_logger_layer_mode() & rocblaslt_layer_mode_log_info)
@@ -3618,7 +3610,6 @@ rocblaslt_status getBestSolutions(RocblasltContractionProblem const& prob,
     updateTensileProblem(prob, data->problem);
 
     bool enableEpilogue = prob.epilogue == ROCBLASLT_EPILOGUE_DEFAULT ? false : true;
-
     auto solutions
         = getSolutions(prob, library, hardware, data->problem, enableEpilogue, requestedAlgoCount);
 
