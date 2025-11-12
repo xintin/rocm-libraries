@@ -407,10 +407,11 @@ namespace HazardObserverTest
     {
         SUPPORTED_ARCH_SECTION(arch)
         {
-            // if(arch.isRDNAGPU())
-            // {
-            //     SKIP("RDNA not supported yet");
-            // }
+            if(!TestContext::ForTarget(arch)->targetArchitecture().HasCapability(
+                   GPUCapability::HasExplicitVectorRevCO))
+            {
+                SKIP("Architecture " + arch.toString() + " does not support v_subrev_u32");
+            }
 
             SECTION("Hazard with VALU write followed by a readlane or permlane")
             {
