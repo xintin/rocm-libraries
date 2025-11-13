@@ -402,6 +402,51 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
         }
         syncCode = syncTable[1::2]
         nglshift = nllshift = 14 # vmcnt shift for ngl and nll
+    elif isTN and TLDS == 1:
+        syncTable = [
+            14, SWaitCnt(dscnt=4, vlcnt=-1, vscnt=-1, comment="Wait for half of LRA0"),
+            14, SBarrier(comment=""),
+
+            47, SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment="Wait for rest of LRA0 and LRB0"),
+
+            63, SWaitCnt(dscnt=-1, vlcnt=14, vscnt=-1, comment="Wait for previous GRA"),
+            64, SBarrier(comment=""),
+
+            80, SWaitCnt(dscnt=-1, vlcnt=12+2, vscnt=-1, comment="Wait for most of previous GRB"),
+            80, SBarrier(comment=""),
+
+            92, SWaitCnt(dscnt=-1, vlcnt=14, vscnt=-1, comment="Wait for previous GRB"),
+            92, SBarrier(comment=""),
+
+            95, SWaitCnt(dscnt=3, vlcnt=-1, vscnt=-1, comment="Wait for most of PLR (good till i>24)"),
+        ]
+        optSchedule = {
+            'SYNC'   : [syncTable[::2]],
+            'GRIncA' : [[0,1,2,     3,4,5,      6,7,8]],
+            'GRIncB' : [[9,10,11,  12,13,14,   15,16,17]],                
+            'LRA0'   : [[0,1,2,3,4,5,6,7],
+                        [1,2,3,4,5,6,7,8]],
+            'LRB0'   : [[15,16,17,18,19,20],
+                        [16,17,18,19,20,21]],
+            
+            'GRA'    : [[15,15, 16,16, 17,17, 18,18,    48,48, 49,49, 50,50, 51,51],
+                        [16,16, 17,17, 18,18, 19,19,    49,49, 50,50, 51,51, 52,52]],
+            'GRB'    : [[68,68, 69,69, 70,70, 71,71,    89,89, 90,90],
+                        [69,69, 70,70, 71,71, 72,72,    90,90, 91,91]],
+
+            'LRA1'   : [[65,66, 67,68, 69,70, 71,72],
+                        [66,67, 68,69, 70,71, 72,73]],
+            'LRB1'   : [[81, 82, 83, 84,    93, 94],
+                        [82, 83, 84, 85,    94, 95]],  
+            
+            'LRSA'   : [[30]], 
+            'LRSB'   : [[31]],
+
+            'LWSA'   : [[60]],
+            'LWSB'   : [[92]],
+            'LCC'    : [[91, 92]],
+        }
+        syncCode = syncTable[1::2]
     else:
         return False, None
 
