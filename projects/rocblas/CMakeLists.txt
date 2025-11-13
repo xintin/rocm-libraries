@@ -432,6 +432,7 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
     endif()
   endif()
 
+<<<<<<< HEAD
   if(ROCBLAS_ENABLE_SAMPLES)
     rocm_install(
       TARGETS
@@ -449,6 +450,28 @@ if(ROCBLAS_ENABLE_CLIENT OR ROCBLAS_BUILD_TESTING OR BUILD_TESTING OR ROCBLAS_EN
       samples
       DESTINATION
       ${CMAKE_INSTALL_BINDIR})
+=======
+#
+# ADDITIONAL TARGETS FOR CODE COVERAGE
+if(BUILD_CODE_COVERAGE)
+  #
+  # > make coverage_cleanup (clean coverage related files.)
+  #
+  # > make coverage
+  # will run:
+  #  > make coverage_analysis (analyze tests)
+  #  > make coverage (generate html documentation)
+  #
+
+  #
+  # Run coverage analysis (rtest.xml sets specify coverage runs)
+  #
+  add_custom_target(coverage_analysis
+    COMMAND ${CMAKE_COMMAND} -E make_directory ./coverage-report/profraw
+    COMMAND ${CMAKE_COMMAND} -E env LLVM_PROFILE_FILE="./coverage-report/profraw/rocblas-coverage_%m.profraw" ${Python3_EXECUTABLE} ./clients/staging/rocblas_rtest.py -t code_coverage
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+>>>>>>> origin/develop
 
     if(ROCBLAS_ENABLE_TENSILE)
       rocm_install(TARGETS rocblas-example-user-driven-tuning COMPONENT samples
