@@ -13,6 +13,7 @@ Architectures:
       HasDirectToLds: 0
       HasExpcnt: 0
       HasExplicitVectorCO: 0
+      HasExplicitVectorRev: 0
       HasExplicitVectorRevCO: 0
       HasGlobalOffset: 0
       HasLshlOr: 0
@@ -9265,3 +9266,4 @@ Architectures:
         MaxLiteral: 0
         WaitCount: -1
         WaitQueues: []
+

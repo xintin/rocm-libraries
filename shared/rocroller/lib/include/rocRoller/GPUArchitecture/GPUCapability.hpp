@@ -52,6 +52,7 @@ namespace rocRoller
             HasExplicitScalarCOCI,
             HasExplicitVectorCO,
             HasExplicitVectorCOCI,
+            HasExplicitVectorRev,
             HasExplicitVectorRevCO,
             HasExplicitVectorRevCOCI,
             HasExplicitVectorRevNC,

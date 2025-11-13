@@ -408,7 +408,7 @@ namespace HazardObserverTest
         SUPPORTED_ARCH_SECTION(arch)
         {
             if(!TestContext::ForTarget(arch)->targetArchitecture().HasCapability(
-                   GPUCapability::HasExplicitVectorRevCO))
+                   GPUCapability::HasExplicitVectorRev))
             {
                 SKIP("Architecture " + arch.toString() + " does not support v_subrev_u32");
             }

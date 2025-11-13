@@ -71,6 +71,7 @@ namespace rocRoller
             {"HasExplicitScalarCOCI", Value::HasExplicitScalarCOCI},
             {"HasExplicitVectorCO", Value::HasExplicitVectorCO},
             {"HasExplicitVectorCOCI", Value::HasExplicitVectorCOCI},
+            {"HasExplicitVectorRev", Value::HasExplicitVectorRev},
             {"HasExplicitVectorRevCO", Value::HasExplicitVectorRevCO},
             {"HasExplicitVectorRevCOCI", Value::HasExplicitVectorRevCOCI},
             {"HasExplicitVectorRevNC", Value::HasExplicitVectorRevNC},

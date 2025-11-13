@@ -12,6 +12,7 @@ Architectures:
       HasExplicitScalarCOCI: 0
       HasExplicitVectorCO: 0
       HasExplicitVectorCOCI: 0
+      HasExplicitVectorRev: 0
       HasExplicitVectorRevCO: 0
       HasExplicitVectorRevCOCI: 0
       HasExplicitVectorRevNC: 0
@@ -13135,3 +13136,4 @@ Architectures:
         MaxLiteral: 0
         WaitCount: -1
         WaitQueues: []
+
