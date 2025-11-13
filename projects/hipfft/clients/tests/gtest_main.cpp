@@ -69,6 +69,8 @@ size_t      max_io_gb_for_hipfftw_test;
 size_t      max_num_arg_validation_tests_per_hipfftw_plan_type;
 size_t      max_elementary_stride_for_hipfftw_test;
 std::string hipfftw_token_for_functional_test;
+// tests for very unusual data layouts are not enabled by default in hipfftw tests
+bool add_tweaked_default_layouts_in_hipfftw_test = false;
 
 // Transform parameters for manual test:
 hipfft_params manual_params;
@@ -385,7 +387,10 @@ int main(int argc, char* argv[])
                    hipfftw_token_for_functional_test,
                    "manual token for hipfftw functional test")
         ->default_val("");
-
+    app.add_flag("--test_unusual_data_layouts_via_hipfftw",
+                 "Enable tests for unusual data layouts in hipfftw functional tests (tweaked data "
+                 "layouts compared to default, configurable only via the guru hipFFTW APIs)")
+        ->each([&](const std::string&) { add_tweaked_default_layouts_in_hipfftw_test = true; });
     app.add_option("--fftw_compare", fftw_compare, "Compare to FFTW in accuracy tests")
         ->default_val(true);
     app.add_option("--mp_lib", mp_lib, "Multi-process library type: none (default), mpi")

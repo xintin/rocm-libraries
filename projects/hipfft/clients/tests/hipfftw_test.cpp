@@ -44,6 +44,7 @@ extern size_t      max_io_gb_for_hipfftw_test;
 extern size_t      max_num_arg_validation_tests_per_hipfftw_plan_type;
 extern size_t      max_elementary_stride_for_hipfftw_test;
 extern std::string hipfftw_token_for_functional_test;
+extern bool        add_tweaked_default_layouts_in_hipfftw_test;
 
 // test details
 namespace
@@ -3236,13 +3237,13 @@ namespace
             nondefault_dim_ordering,
             tweaked_default_batched
         };
-        const std::vector<test_layout> possible_test_layouts
-            = {test_layout::default_unbatched,
-               test_layout::default_batched,
-               test_layout::random_nembed_compatible,
-               test_layout::inner_batched,
-               test_layout::nondefault_dim_ordering,
-               test_layout::tweaked_default_batched};
+        std::vector<test_layout> possible_test_layouts = {test_layout::default_unbatched,
+                                                          test_layout::default_batched,
+                                                          test_layout::random_nembed_compatible,
+                                                          test_layout::inner_batched,
+                                                          test_layout::nondefault_dim_ordering};
+        if(add_tweaked_default_layouts_in_hipfftw_test)
+            possible_test_layouts.push_back(test_layout::tweaked_default_batched);
         std::uniform_int_distribution<int> coin_toss(0, 1);
         const auto&                        possible_mem_types = get_possible_data_mem_types();
         while(full_list.size() < desired_full_suite_size)
