@@ -402,7 +402,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
         }
         syncCode = syncTable[1::2]
         nglshift = nllshift = 14 # vmcnt shift for ngl and nll
-    elif isTN and TLDS == 1:
+    elif isTN(kernel) and TLDS == 1:
         syncTable = [
             14, SWaitCnt(dscnt=4, vlcnt=-1, vscnt=-1, comment="Wait for half of LRA0"),
             14, SBarrier(comment=""),
@@ -447,6 +447,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
             'LCC'    : [[91, 92]],
         }
         syncCode = syncTable[1::2]
+        nglshift = nllshift = 14 # vmcnt shift for ngl and nll
     else:
         return False, None
 
