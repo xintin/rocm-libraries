@@ -31,6 +31,13 @@ option(BENCHMARK_TUNE_PARAMS "Tuning parameters" "")
 
 option(BENCHMARK_USE_AMDSMI "Let benchmarks use AMD SMI to output more GPU statistics" OFF)
 
+execute_process(
+  COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  OUTPUT_VARIABLE COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 if(BENCHMARK_CONFIG_TUNING)
   add_custom_target("benchmark_config_tuning")
 endif()
@@ -76,6 +83,10 @@ function(add_rocprim_benchmark BENCHMARK_SOURCE)
     add_executable(${BENCHMARK_TARGET} ${BENCHMARK_SOURCE})
   endif()
 
+  target_include_directories(${BENCHMARK_TARGET} PRIVATE ../../../shared/primbench)
+
+  target_compile_definitions(${BENCHMARK_TARGET} PUBLIC COMMIT_HASH="${COMMIT_HASH}")
+
   if(BUILD_NAIVE_BENCHMARK)
     target_compile_definitions(${BENCHMARK_TARGET} PUBLIC BUILD_NAIVE_BENCHMARK)
   endif()
@@ -101,14 +112,11 @@ function(add_rocprim_benchmark BENCHMARK_SOURCE)
       hip::device)
   endif()
 
-  if(BENCHMARK_USE_AMDSMI)
-    find_library(AMDSMI_LIB NAMES amd_smi)
-    if(AMDSMI_LIB)
-      target_link_libraries(${BENCHMARK_TARGET} PRIVATE ${AMDSMI_LIB})
-    else()
-      message(FATAL_ERROR "BENCHMARK_USE_AMDSMI was ON, but AMD SMI is not installed")
-    endif()
-    target_compile_definitions(${BENCHMARK_TARGET} PRIVATE BENCHMARK_USE_AMDSMI)
+  find_library(AMDSMI_LIB NAMES amd_smi)
+  if(AMDSMI_LIB)
+    target_link_libraries(${BENCHMARK_TARGET} PRIVATE ${AMDSMI_LIB})
+  else()
+    message(FATAL_ERROR "AMD SMI is not installed")
   endif()
 
   target_compile_options(${BENCHMARK_TARGET}

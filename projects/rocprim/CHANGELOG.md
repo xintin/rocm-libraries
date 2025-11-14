@@ -2,6 +2,12 @@
 
 Full documentation for rocPRIM is available at [https://rocm.docs.amd.com/projects/rocPRIM/en/latest/](https://rocm.docs.amd.com/projects/rocPRIM/en/latest/).
 
+## rocPRIM ?.?.? for ROCm ?.?
+
+### Removed
+
+* Removed the cmake option `BENCHMARK_USE_AMDSMI`. Having AMD SMI installed is now a hard requirement for benchmarking, because AMD SMI's API is now used to monitor the GPU's temperature.
+
 ## rocPRIM 4.1.0 for ROCm 7.1
 
 ### Added

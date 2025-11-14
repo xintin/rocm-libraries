@@ -20,21 +20,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_ADJACENT_DIFFERENCE_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_ADJACENT_DIFFERENCE_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/device_adjacent_difference.hpp"
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime_api.h>
 
-// rocPRIM
 #include <rocprim/config.hpp>
 #include <rocprim/detail/various.hpp>
 #include <rocprim/device/config_types.hpp>
@@ -52,34 +48,37 @@ template<typename Config>
 std::string config_name()
 {
     auto config = Config();
-    return "{bs:" + std::to_string(config.block_size)
-           + ",ipt:" + std::to_string(config.items_per_thread) + "}";
+    return "{\"bs\":" + std::to_string(config.block_size)
+           + ",\"ipt\":" + std::to_string(config.items_per_thread) + "}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T                   = int,
          bool                Left     = false,
          common::api_variant Aliasing = common::api_variant::no_alias,
          typename Config              = rocprim::default_config>
-struct device_adjacent_difference_benchmark : public benchmark_utils::autotune_interface
+struct device_adjacent_difference_benchmark : public primbench::benchmark_interface
 {
-    std::string name() const override
+    std::string algo() const override
     {
-
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:adjacent_difference"
-            + (Aliasing == common::api_variant::no_alias ? ""s : "_inplace"s) + ",is_left:"
-            + (Left ? "true"s : "false"s) + ",value_type:" + std::string(Traits<T>::name())
-            + ",cfg:" + config_name<Config>() + "}");
+        return "device_adjacent_difference";
     }
 
-    void run(benchmark_utils::state&& state) override
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo()
+               + "\",\"left\":" + (Left ? "true" : "false")
+               + ",\"inplace\":" + (Aliasing != common::api_variant::no_alias ? "true" : "false")
+               + ",\"value_type\":\"" + Traits<T>::name() + "\",\"cfg\":" + config_name<Config>()
+               + "}";
+    }
+
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -90,17 +89,17 @@ struct device_adjacent_difference_benchmark : public benchmark_utils::autotune_i
         static constexpr bool debug_synchronous = false;
 
         // Generate data
-        const size_t         size         = bytes / sizeof(T);
+        const size_t         items        = bytes / sizeof(T);
         const auto           random_range = limit_random_range<T>(1, 100);
         const std::vector<T> input
-            = get_random_data<T>(size, random_range.first, random_range.second, seed.get_0());
+            = get_random_data<T>(items, random_range.first, random_range.second, seed.get_0());
 
         common::device_ptr<T>           d_input(input);
         common::device_ptr<output_type> d_output;
 
         if constexpr(Aliasing == common::api_variant::no_alias)
         {
-            d_output.resize(size);
+            d_output.resize(items);
         }
 
         static constexpr auto left_tag  = rocprim::detail::bool_constant<Left>{};
@@ -118,7 +117,7 @@ struct device_adjacent_difference_benchmark : public benchmark_utils::autotune_i
                                                         temp_storage_size,
                                                         d_input.get(),
                                                         d_output.get(),
-                                                        size,
+                                                        items,
                                                         rocprim::plus<>{},
                                                         stream,
                                                         debug_synchronous);
@@ -126,9 +125,10 @@ struct device_adjacent_difference_benchmark : public benchmark_utils::autotune_i
         HIP_CHECK(launch());
         d_temp_storage.resize(temp_storage_size);
 
-        state.run([&] { HIP_CHECK(launch()); });
+        state.set_items(items);
+        state.add_reads<T>(items);
 
-        state.set_throughput(size, sizeof(T));
+        state.run([&] { HIP_CHECK(launch()); });
     }
 };
 
@@ -147,7 +147,7 @@ struct device_adjacent_difference_benchmark_generator
     struct create_ipt
     {
         template<int ipt_num = primes[IptValueIndex]>
-        auto operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        auto operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
             -> std::enable_if_t<(ipt_num < max_items_per_thread_arg)>
         {
             using generated_config = rocprim::adjacent_difference_config<BlockSize, ipt_num>;
@@ -158,15 +158,15 @@ struct device_adjacent_difference_benchmark_generator
         }
 
         template<int ipt_num = primes[IptValueIndex]>
-        auto operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>&)
+        auto operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>&)
             -> std::enable_if_t<!(ipt_num < max_items_per_thread_arg)>
         {}
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
-        static_for_each<make_index_range<unsigned int, 0, primes.size() - 1>, create_ipt>(storage);
+        primbench::autotuning::static_for_each<
+            primbench::autotuning::make_index_range<unsigned int, 0, primes.size() - 1>,
+            create_ipt>(storage);
     }
 };
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_ADJACENT_DIFFERENCE_PARALLEL_HPP_

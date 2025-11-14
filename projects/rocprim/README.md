@@ -27,6 +27,8 @@ Optional:
 * [Google Benchmark](https://github.com/google/benchmark)
   * Required only for benchmarks. Building benchmarks is off by default.
   * This is automatically downloaded and built by the CMake script.
+* [AMD SMI](https://github.com/ROCm/amdsmi)
+  * Required only for benchmarks. Building benchmarks is off by default.
 
 ## Build and install
 
@@ -48,7 +50,6 @@ You can build and install rocPRIM on Linux or Windows.
   #   BUILD_BENCHMARK - OFF by default.
   #   BENCHMARK_CONFIG_TUNING - OFF by default. The purpose of this flag to find the best kernel config parameters.
   #     At ON the compilation time can be increased significantly.
-  #   BENCHMARK_USE_AMDSMI - OFF by default. Set to ON to let benchmarks use AMD SMI to output more GPU statistics.
   #   AMDGPU_TARGETS - list of AMD architectures, default: gfx803;gfx900;gfx906;gfx908.
   #     You can make compilation faster if you want to test/benchmark only on one architecture,
   #     for example, add -DAMDGPU_TARGETS=gfx906 to 'cmake' parameters.
