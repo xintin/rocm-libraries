@@ -356,6 +356,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
     kernel["MfmaInitCVgprs"] = True
 
     if isNN(kernel) and useLDSTr and TLDS==1:
+        n_code_paths = 2
         syncTable = [
             22, SWaitCnt(dscnt=8+3, vlcnt=-1, vscnt=-1, comment="Wait for first 8 of LRA0"),
             22, SBarrier(comment=""),
@@ -403,6 +404,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
         syncCode = syncTable[1::2]
         nglshift = nllshift = 14 # vmcnt shift for ngl and nll
     elif isTN(kernel) and TLDS == 1:
+        n_code_paths = 2
         syncTable = [
             14, SWaitCnt(dscnt=4, vlcnt=-1, vscnt=-1, comment="Wait for half of LRA0"),
             14, SBarrier(comment=""),
@@ -452,7 +454,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
         return False, None
 
     numMfma = 96
-    opt1 = ScheduleInfo(2, numMfma, optSchedule, syncCode, nglshift, nllshift)
+    opt1 = ScheduleInfo(n_code_paths, numMfma, optSchedule, syncCode, nglshift, nllshift)
     return True, opt1
 
 def _get_schedule_256x256x128_8bit(kernel, useLDSTr, TLDS):
