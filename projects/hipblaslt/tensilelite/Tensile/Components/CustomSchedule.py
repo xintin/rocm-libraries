@@ -365,7 +365,7 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
 
             63, SWaitCnt(dscnt=0, vlcnt=-1, vscnt=-1, comment="Wait for rest of LRB0"),
             63, SWaitCnt(dscnt=-1, vlcnt=14, vscnt=-1, comment="Wait for part of previous GRA"),
-            64, SBarrier(comment=""),
+            63, SBarrier(comment=""),
 
             80, SWaitCnt(dscnt=-1, vlcnt=12+2, vscnt=-1, comment="Wait for most of previous GRB"),
             80, SBarrier(comment=""),
@@ -386,8 +386,8 @@ def _get_schedule_256x192x64_16bit(kernel, useLDSTr, TLDS):
             
             'GRA'    : [[24,24, 25,25, 26,26, 27,27,    48,48, 49,49, 50,50, 51,51],
                         [25,25, 26,26, 27,27, 28,28,    49,49, 50,50, 51,51, 52,52]],
-            'GRB'    : [[68,68, 69,69, 70,70, 71,71,    89,89, 90,90],
-                        [69,69, 70,70, 71,71, 72,72,    90,90, 91,91]],
+            'GRB'    : [[64,64, 65,65, 66,66, 67,67,    89,89, 90,90],
+                        [65,65, 66,66, 75,75, 79,79,    90,90, 91,91]],
 
             'LRA1'   : [[65,66, 67,68, 69,70, 71,72, 73,74, 75,76, 77,78, 79,80],
                         [66,67, 68,69, 70,71, 72,73, 74,75, 76,77, 78,79, 80,81]],
