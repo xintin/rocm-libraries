@@ -168,6 +168,14 @@ namespace GPUArchitectureGenerator
 
             {rocRoller::GPUCapability::v_add3_u32, {{"v_add3_u32 v0, v1, v2, v3"}, ""}},
 
+            {rocRoller::GPUCapability::v_addc_co_u32,
+             {{"v_addc_co_u32 v0, vcc, v0, v1, vcc", "v_addc_co_u32 v0, vcc_lo, v0, v1, vcc_lo"},
+              ""}},
+            {rocRoller::GPUCapability::v_subb_co_u32,
+             {{"v_subb_co_u32 v0, vcc, v0, v1, vcc", "v_subb_co_u32 v0, vcc_lo, v0, v1, vcc_lo"},
+              ""}},
+            {rocRoller::GPUCapability::v_add_u32, {{"v_add_u32 v0, 1, v0"}, ""}},
+
             {rocRoller::GPUCapability::s_barrier, {{"s_barrier"}, ""}},
             {rocRoller::GPUCapability::s_barrier_signal, {{"s_barrier_signal -1"}, ""}},
 

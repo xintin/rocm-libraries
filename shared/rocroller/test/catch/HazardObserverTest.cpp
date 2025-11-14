@@ -31,6 +31,7 @@
 #include "CustomSections.hpp"
 #include "TestContext.hpp"
 #include "TestKernels.hpp"
+#include "rocRoller/GPUArchitecture/GPUCapability.hpp"
 
 #include <common/SourceMatcher.hpp>
 #include <common/TestValues.hpp>
@@ -94,9 +95,12 @@ namespace HazardObserverTest
     {
         SUPPORTED_ARCH_SECTION(arch)
         {
-            if(arch.isRDNAGPU())
+            auto context = TestContext::ForTarget(arch);
+            if(!context->targetArchitecture().HasCapability(GPUCapability::v_addc_co_u32)
+               && !context->targetArchitecture().HasCapability(GPUCapability::v_subb_co_u32))
             {
-                SKIP("RDNA not supported yet");
+                SKIP("Architecture " + arch.toString()
+                     + " does not support v_addc_co_u32 or v_subb_co_u32");
             }
 
             SECTION("v_readlane (2nd op) read as laneselect")
@@ -113,6 +117,8 @@ namespace HazardObserverTest
 
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1], 4);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), ContainsSubstring("s_nop 3"));
             }
@@ -135,6 +141,8 @@ namespace HazardObserverTest
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 1);
 
+                    std::cout << "\n\n" << context.output() << "\n\n";
+
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 0"));
                 }
                 else
@@ -142,6 +150,8 @@ namespace HazardObserverTest
                     // NOPs are required on 94X arch
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 2);
+
+                    std::cout << "\n\n" << context.output() << "\n\n";
 
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 1"));
                 }
@@ -165,6 +175,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
 
+                std::cout << "\n\n" << context.output() << "\n\n";
+
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
 
@@ -186,6 +198,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
 
+                std::cout << "\n\n" << context.output() << "\n\n";
+
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
 
@@ -206,6 +220,8 @@ namespace HazardObserverTest
 
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1], 1);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), ContainsSubstring("s_nop 0"));
             }
@@ -231,6 +247,8 @@ namespace HazardObserverTest
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 1);
 
+                    std::cout << "\n\n" << context.output() << "\n\n";
+
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 0"));
                 }
                 else
@@ -238,6 +256,8 @@ namespace HazardObserverTest
                     // NOPs are required on 94X arch
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 2);
+
+                    std::cout << "\n\n" << context.output() << "\n\n";
 
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 1"));
                 }
@@ -337,6 +357,8 @@ namespace HazardObserverTest
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1]);
 
+                    std::cout << "\n\n" << context.output() << "\n\n";
+
                     CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
                 }
                 else
@@ -344,6 +366,8 @@ namespace HazardObserverTest
                     // NOPs are required on 94X arch
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 1);
+
+                    std::cout << "\n\n" << context.output() << "\n\n";
 
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 0"));
                 }
@@ -363,6 +387,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
 
+                std::cout << "\n\n" << context.output() << "\n\n";
+
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
 
@@ -378,6 +404,8 @@ namespace HazardObserverTest
 
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
@@ -398,6 +426,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
                 peekAndSchedule(context, insts[2]);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
@@ -519,10 +549,10 @@ namespace HazardObserverTest
 
         SUPPORTED_ARCH_SECTION(arch)
         {
-            if(arch.isRDNAGPU())
-            {
-                SKIP("RDNA not supported yet");
-            }
+            // if(arch.isRDNAGPU())
+            // {
+            //     SKIP("RDNA not supported yet");
+            // }
 
             SECTION("Hazard on 94X with 2nd op is v_readlane")
             {
@@ -541,6 +571,8 @@ namespace HazardObserverTest
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1]);
 
+                    std::cout << "\n\n" << context.output() << "\n\n";
+
                     CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
                 }
                 else
@@ -548,6 +580,8 @@ namespace HazardObserverTest
                     // NOPs are required on 94X arch
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 4);
+
+                    std::cout << "\n\n" << context.output() << "\n\n";
 
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 3"));
                 }
@@ -569,6 +603,8 @@ namespace HazardObserverTest
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1]);
 
+                    std::cout << "\n\n" << context.output() << "\n\n";
+
                     CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
                 }
                 else
@@ -576,6 +612,8 @@ namespace HazardObserverTest
                     // NOPs are required on 94X arch
                     peekAndSchedule(context, insts[0]);
                     peekAndSchedule(context, insts[1], 2);
+
+                    std::cout << "\n\n" << context.output() << "\n\n";
 
                     CHECK_THAT(context.output(), ContainsSubstring("s_nop 1"));
                 }
@@ -594,6 +632,8 @@ namespace HazardObserverTest
 
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
@@ -618,6 +658,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1], 4);
 
+                std::cout << "\n\n" << context.output() << "\n\n";
+
                 CHECK_THAT(context.output(), ContainsSubstring("s_nop 3"));
             }
         }
@@ -627,10 +669,10 @@ namespace HazardObserverTest
     {
         SUPPORTED_ARCH_SECTION(arch)
         {
-            if(arch.isRDNAGPU())
-            {
-                SKIP("RDNA not supported yet");
-            }
+            // if(arch.isRDNAGPU())
+            // {
+            //     SKIP("RDNA not supported yet");
+            // }
 
             auto context = TestContext::ForTarget(arch);
             auto v       = createRegisters(context, Register::Type::Vector, DataType::UInt32, 2);
@@ -646,6 +688,8 @@ namespace HazardObserverTest
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1]);
 
+                std::cout << "\n\n" << context.output() << "\n\n";
+
                 CHECK_THAT(context.output(), !(ContainsSubstring("s_nop")));
             }
             else
@@ -653,6 +697,8 @@ namespace HazardObserverTest
                 // NOPs are required on 94X arch
                 peekAndSchedule(context, insts[0]);
                 peekAndSchedule(context, insts[1], 1);
+
+                std::cout << "\n\n" << context.output() << "\n\n";
 
                 CHECK_THAT(context.output(), ContainsSubstring("s_nop 0"));
             }
@@ -663,10 +709,10 @@ namespace HazardObserverTest
     {
         SUPPORTED_ARCH_SECTION(arch)
         {
-            if(arch.isRDNAGPU())
-            {
-                SKIP("RDNA not supported yet");
-            }
+            // if(arch.isRDNAGPU())
+            // {
+            //     SKIP("RDNA not supported yet");
+            // }
 
             auto context = TestContext::ForTarget(arch);
 
@@ -680,6 +726,8 @@ namespace HazardObserverTest
                 Instruction("s_endpgm", {}, {}, {}, "")};
             peekAndSchedule(context, insts[0]);
             peekAndSchedule(context, insts[1], 5);
+
+            std::cout << "\n\n" << context.output() << "\n\n";
 
             CHECK_THAT(context.output(), ContainsSubstring("s_nop 4"));
         }
