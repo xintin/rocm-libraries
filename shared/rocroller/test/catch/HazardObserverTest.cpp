@@ -315,9 +315,10 @@ namespace HazardObserverTest
     {
         SUPPORTED_ARCH_SECTION(arch)
         {
-            if(arch.isRDNAGPU())
+            if(!TestContext::ForTarget(arch)->targetArchitecture().HasCapability(
+                   GPUCapability::v_add_u32))
             {
-                SKIP("RDNA not supported yet");
+                SKIP("Architecture " + arch.toString() + " does not support v_add_u32");
             }
 
             SECTION("Has hazard with 2nd op (non-trans) accessing the same register")

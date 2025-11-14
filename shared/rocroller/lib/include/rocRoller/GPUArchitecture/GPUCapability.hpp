@@ -118,6 +118,10 @@ namespace rocRoller
 
             v_add3_u32,
 
+            v_addc_co_u32,
+            v_subb_co_u32,
+            v_add_u32,
+
             s_barrier,
             s_barrier_signal,
 
