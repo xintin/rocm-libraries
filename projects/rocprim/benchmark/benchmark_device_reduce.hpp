@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_REDUCE_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_REDUCE_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM HIP API
 #include <rocprim/block/block_reduce.hpp>
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
@@ -62,60 +58,65 @@ template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::reduce_config_params config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread)
-           + ",method:" + std::string(get_reduce_method_name(config.block_reduce_method)) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + ",\"method\":\""
+           + std::string(get_reduce_method_name(config.block_reduce_method)) + "\"}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T              = int,
          typename BinaryFunction = rocprim::plus<T>,
          typename Config         = rocprim::default_config>
-struct device_reduce_benchmark : public benchmark_utils::autotune_interface
+struct device_reduce_benchmark : public primbench::benchmark_interface
 {
-    std::string name() const override
+    std::string algo() const override
     {
-        return bench_naming::format_name("{lvl:device,algo:reduce,key_type:"
-                                         + std::string(Traits<T>::name())
-                                         + ",cfg:" + config_name<Config>() + "}");
+        return "device_reduce";
     }
 
-    void run(benchmark_utils::state&& state) override
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"key_type\":\"" + Traits<T>::name()
+               + "\",\"cfg\":" + config_name<Config>() + "}";
+    }
+
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
         const auto& seed   = state.seed;
 
-        // Calculate the number of elements
-        size_t size = bytes / sizeof(T);
+        size_t items = bytes / sizeof(T);
 
         BinaryFunction reduce_op{};
         const auto     random_range = limit_random_range<T>(0, 1000);
         std::vector<T> input
-            = get_random_data<T>(size, random_range.first, random_range.second, seed.get_0());
+            = get_random_data<T>(items, random_range.first, random_range.second, seed.get_0());
 
         common::device_ptr<T> d_input(input);
         common::device_ptr<T> d_output(1);
-        HIP_CHECK(hipDeviceSynchronize());
 
         // Allocate temporary storage memory
         size_t temp_storage_size_bytes;
+
         // Get size of d_temp_storage
         HIP_CHECK(rocprim::reduce<Config>(nullptr,
                                           temp_storage_size_bytes,
                                           d_input.get(),
                                           d_output.get(),
                                           T(),
-                                          size,
+                                          items,
                                           reduce_op,
                                           stream));
         common::device_ptr<void> d_temp_storage(temp_storage_size_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<T>(items);
 
         state.run(
             [&]
@@ -125,13 +126,9 @@ struct device_reduce_benchmark : public benchmark_utils::autotune_interface
                                                   d_input.get(),
                                                   d_output.get(),
                                                   T(),
-                                                  size,
+                                                  items,
                                                   reduce_op,
                                                   stream));
             });
-
-        state.set_throughput(size, sizeof(T));
     }
 };
-
-#endif

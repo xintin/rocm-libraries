@@ -21,21 +21,19 @@
 // SOFTWARE.
 
 #include "benchmark_device_radix_sort.hpp"
-#include "benchmark_utils.hpp"
+#include "primbench.hpp"
 
-// HIP API
 #include <hip/hip_runtime.h>
 
 #include <cstddef>
 #include <string>
 #include <vector>
 
-#define CREATE_RADIX_SORT_BENCHMARK(...) \
-    executor.queue_instance(device_radix_sort_benchmark<__VA_ARGS__>());
+#define CREATE_RADIX_SORT_BENCHMARK(...) executor.queue<device_radix_sort_benchmark<__VA_ARGS__>>();
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB);
 
     using custom_key = common::custom_type<float, int16_t>;
     CREATE_RADIX_SORT_BENCHMARK(int)

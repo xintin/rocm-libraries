@@ -20,22 +20,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_SEARCH_N_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_SEARCH_N_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
-#include "cmdparser.hpp"
 
 #include "../common/utils_custom_type.hpp"
 #include "../common/utils_device_ptr.hpp"
 
-// gbench
-#include <benchmark/benchmark.h>
-
-// HIP
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_search_n.hpp>
@@ -84,13 +79,11 @@ std::string search_n_config_name()
            + ",threshold:" + std::to_string(config.threshold) + "}";
 }
 
-#ifndef BENCHMARK_CONFIG_TUNING
 template<>
 std::string search_n_config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
-#endif
 
 template<size_t Value>
 struct count_equal_to
@@ -112,9 +105,9 @@ struct count_is_percent_of_size
     {
         return "count_is_percent_of_size<" + std::to_string(Value) + ">";
     }
-    constexpr size_t resolve(size_t size) const
+    constexpr size_t resolve(size_t items) const
     {
-        return size * Value / 100;
+        return items * Value / 100;
     }
 };
 
@@ -124,11 +117,21 @@ template<class InputType,
          class OutputType,
          class CountCalculator,
          class Config = rocprim::default_config>
-class benchmark_search_n : public benchmark_utils::autotune_interface
+struct device_search_n_benchmark : public primbench::benchmark_interface
 {
+    std::string algo() const override
+    {
+        return "device_search_n";
+    }
 
-public:
-    void run(benchmark_utils::state&& state) override
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"data_type\":\""
+               + Traits<InputType>::name() + "\",\"count_calculator\":\"" + CountCalculator{}.name()
+               + "\",\"cfg\":" + search_n_config_name<Config>() + "}";
+    }
+
+    void run(primbench::state& state) override
     {
         const auto& stream    = state.stream;
         const auto& size_byte = state.bytes;
@@ -137,19 +140,18 @@ public:
         InputType                      h_value{1};
         common::device_ptr<void>       d_temp_storage;
         size_t                         temp_storage_size = 0;
-        size_t                         size;
         size_t                         count;
         std::vector<InputType>         input{};
         common::device_ptr<InputType>  d_input;
         common::device_ptr<OutputType> d_output(1);
         common::device_ptr<InputType>  d_value(std::vector<decltype(h_value)>{h_value}, stream);
 
-        size = size_byte / sizeof(InputType);
+        size_t items = size_byte / sizeof(InputType);
 
-        count            = CountCalculator{}.resolve(size);
+        count            = CountCalculator{}.resolve(items);
         size_t cur_tile  = 0;
-        size_t last_tile = size / count - 1;
-        input            = std::vector<InputType>(size, h_value);
+        size_t last_tile = items / count - 1;
+        input            = std::vector<InputType>(items, h_value);
         while(cur_tile != last_tile)
         {
             input[cur_tile * count + count - 1] = h_noise;
@@ -164,7 +166,7 @@ public:
                                                   temp_storage_size,
                                                   d_input.get(),
                                                   d_output.get(),
-                                                  size,
+                                                  items,
                                                   count,
                                                   d_value.get(),
                                                   rocprim::equal_to<InputType>{},
@@ -176,18 +178,10 @@ public:
         launch_search_n();
         d_temp_storage.resize_async(temp_storage_size, stream);
 
+        state.set_items(items);
+        state.add_reads<InputType>(items);
+
         state.run([&] { launch_search_n(); });
-
-        state.set_throughput(size, sizeof(InputType));
-    }
-
-    std::string name() const override
-    {
-        return bench_naming::format_name("{lvl:device,algo:search_n,data_type:"
-                                         + std::string(Traits<InputType>::name())
-                                         + ",count_calculator:" + CountCalculator{}.name()
-                                         + ",cfg:" + search_n_config_name<Config>() + "}")
-            .c_str();
     }
 };
 
@@ -196,28 +190,26 @@ public:
 template<typename T, unsigned int BlockSize, unsigned int ItemsPerThread, size_t Threshold>
 struct device_search_n_benchmark_generator
 {
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         using config = rocprim::search_n_config<BlockSize, ItemsPerThread, Threshold>;
         storage.emplace_back(
-            std::make_unique<benchmark_search_n<T, size_t, count_equal_to<1>, config>>());
+            std::make_unique<device_search_n_benchmark<T, size_t, count_equal_to<1>, config>>());
         storage.emplace_back(
-            std::make_unique<benchmark_search_n<T, size_t, count_equal_to<6>, config>>());
+            std::make_unique<device_search_n_benchmark<T, size_t, count_equal_to<6>, config>>());
         storage.emplace_back(
-            std::make_unique<benchmark_search_n<T, size_t, count_equal_to<10>, config>>());
+            std::make_unique<device_search_n_benchmark<T, size_t, count_equal_to<10>, config>>());
         storage.emplace_back(
-            std::make_unique<benchmark_search_n<T, size_t, count_equal_to<14>, config>>());
+            std::make_unique<device_search_n_benchmark<T, size_t, count_equal_to<14>, config>>());
         storage.emplace_back(
-            std::make_unique<benchmark_search_n<T, size_t, count_equal_to<25>, config>>());
-        storage.emplace_back(
-            std::make_unique<
-                benchmark_search_n<T, size_t, count_is_percent_of_size<50>, config>>());
+            std::make_unique<device_search_n_benchmark<T, size_t, count_equal_to<25>, config>>());
         storage.emplace_back(
             std::make_unique<
-                benchmark_search_n<T, size_t, count_is_percent_of_size<100>, config>>());
+                device_search_n_benchmark<T, size_t, count_is_percent_of_size<50>, config>>());
+        storage.emplace_back(
+            std::make_unique<
+                device_search_n_benchmark<T, size_t, count_is_percent_of_size<100>, config>>());
     }
 };
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_SEARCH_N_PARALLEL_HPP_

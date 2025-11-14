@@ -20,8 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_SCAN_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_SCAN_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
@@ -30,13 +31,8 @@
     #include "../common/utils_custom_type.hpp"
 #endif
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/config.hpp>
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
@@ -61,19 +57,32 @@
     #include <stdint.h>
 #endif
 
+inline const char* get_block_scan_algorithm_name(rocprim::block_scan_algorithm alg)
+{
+    switch(alg)
+    {
+        case rocprim::block_scan_algorithm::using_warp_scan:
+            return "block_scan_algorithm::using_warp_scan";
+        case rocprim::block_scan_algorithm::reduce_then_scan:
+            return "block_scan_algorithm::reduce_then_scan";
+            // Not using `default: ...` because it kills effectiveness of -Wswitch
+    }
+    return "default_algorithm";
+}
+
 template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::scan_config_params config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread) + ",method:"
-           + std::string(get_block_scan_algorithm_name(config.block_scan_method)) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + ",\"method\":\""
+           + std::string(get_block_scan_algorithm_name(config.block_scan_method)) + "\"}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<bool Exclusive,
@@ -81,14 +90,25 @@ template<bool Exclusive,
          typename ScanOp,
          bool Deterministic,
          typename Config = rocprim::default_config>
-struct device_scan_benchmark : public benchmark_utils::autotune_interface
+struct device_scan_benchmark : public primbench::benchmark_interface
 {
+    std::string algo() const override
+    {
+        if constexpr(Deterministic)
+        {
+            return "device_scan_deterministic";
+        }
+        else
+        {
+            return "device_scan";
+        }
+    }
+
     std::string name() const override
     {
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:scan,exclusive:" + (Exclusive ? "true"s : "false"s) + ",value_type:"
-            + std::string(Traits<T>::name()) + ",cfg:" + config_name<Config>() + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo()
+               + "\",\"exclusive\":" + (Exclusive ? "true" : "false") + ",\"value_type\":\""
+               + Traits<T>::name() + "\",\"cfg\":" + config_name<Config>() + "}";
     }
 
     template<bool excl = Exclusive>
@@ -166,37 +186,38 @@ struct device_scan_benchmark : public benchmark_utils::autotune_interface
         }
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
         const auto& seed   = state.seed;
 
-        // Calculate the number of elements
-        size_t size = bytes / sizeof(T);
+        size_t items = bytes / sizeof(T);
 
         ScanOp         scan_op{};
         const auto     random_range = limit_random_range<T>(0, 1000);
         std::vector<T> input
-            = get_random_data<T>(size, random_range.first, random_range.second, seed.get_0());
+            = get_random_data<T>(items, random_range.first, random_range.second, seed.get_0());
         T                     initial_value = T(123);
         common::device_ptr<T> d_input(input);
-        common::device_ptr<T> d_output(size);
-        HIP_CHECK(hipDeviceSynchronize());
+        common::device_ptr<T> d_output(items);
 
         // Allocate temporary storage memory
         size_t temp_storage_size_bytes;
+
         // Get size of d_temp_storage
         HIP_CHECK((run_device_scan(nullptr,
                                    temp_storage_size_bytes,
                                    d_input.get(),
                                    d_output.get(),
                                    initial_value,
-                                   size,
+                                   items,
                                    scan_op,
                                    stream)));
         common::device_ptr<void> d_temp_storage(temp_storage_size_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<T>(items);
 
         state.run(
             [&]
@@ -206,12 +227,10 @@ struct device_scan_benchmark : public benchmark_utils::autotune_interface
                                            d_input.get(),
                                            d_output.get(),
                                            initial_value,
-                                           size,
+                                           items,
                                            scan_op,
                                            stream)));
             });
-
-        state.set_throughput(size, sizeof(T));
     }
 };
 
@@ -230,7 +249,7 @@ struct device_scan_benchmark_generator
             struct create_ipt
             {
                 void operator()(
-                    std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+                    std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
                 {
                     storage.emplace_back(
                         std::make_unique<device_scan_benchmark<
@@ -246,47 +265,47 @@ struct device_scan_benchmark_generator
                 }
             };
 
-            void operator()(
-                std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+            void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
             {
                 // Limit items per thread to not over-use shared memory
                 static constexpr unsigned int max_items_per_thread
                     = ::rocprim::min<size_t>(65536 / (block_size * sizeof(T)) - 1, 24);
-                static_for_each<make_index_range<unsigned int, 1, max_items_per_thread>,
-                                create_ipt>(storage);
+                primbench::autotuning::static_for_each<
+                    primbench::autotuning::make_index_range<unsigned int, 1, max_items_per_thread>,
+                    create_ipt>(storage);
             }
 
             static constexpr unsigned int block_size = 1u << BlockSizeExponent;
         };
 
-        static void
-            create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
-            static_for_each<index_range, create_block_size>(storage);
+            primbench::autotuning::static_for_each<index_range, create_block_size>(storage);
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         // Block sizes 64, 128, 256
-        create_block_scan_algorithm<make_index_range<unsigned int, 6, 8>>::create(storage);
+        create_block_scan_algorithm<
+            primbench::autotuning::make_index_range<unsigned int, 6, 8>>::create(storage);
     }
 };
 
 #else
 
     #define CREATE_EXCL_INCL_BENCHMARK(EXCL, T) \
-        executor.queue_instance(device_scan_benchmark<EXCL, T, rocprim::plus<T>, Deterministic>());
+        executor.queue<device_scan_benchmark<EXCL, T, rocprim::plus<T>, Deterministic>>();
 
     #define CREATE_BENCHMARK(T)              \
         CREATE_EXCL_INCL_BENCHMARK(false, T) \
         CREATE_EXCL_INCL_BENCHMARK(true, T)
 
     #define BENCHMARK_TYPE_TUNING(T) \
-        executor.queue_instance(device_scan_benchmark<false, T, rocprim::plus<T>, false>());
+        executor.queue<device_scan_benchmark<false, T, rocprim::plus<T>, false>>();
 
 template<bool Deterministic>
-void add_benchmarks(benchmark_utils::executor& executor)
+void add_benchmarks(primbench::executor& executor)
 {
     // Tuned types
     BENCHMARK_TYPE_TUNING(rocprim::int128_t)
@@ -317,5 +336,3 @@ void add_benchmarks(benchmark_utils::executor& executor)
 }
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_SCAN_PARALLEL_HPP_

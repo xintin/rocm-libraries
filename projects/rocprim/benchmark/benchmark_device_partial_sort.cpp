@@ -21,11 +21,10 @@
 // SOFTWARE.
 
 #include "benchmark_device_partial_sort.hpp"
-#include "benchmark_utils.hpp"
+#include "primbench.hpp"
 
 #include "../common/utils_custom_type.hpp"
 
-// HIP API
 #include <hip/hip_runtime.h>
 
 #include <rocprim/types.hpp>
@@ -36,7 +35,7 @@
 #include <vector>
 
 #define CREATE_BENCHMARK_PARTIAL_SORT(TYPE, SMALL_N) \
-    executor.queue_instance(device_partial_sort_benchmark<TYPE>(SMALL_N));
+    executor.queue<device_partial_sort_benchmark<TYPE>>(SMALL_N);
 
 #define CREATE_BENCHMARK(TYPE)                                                               \
     {                                                                                        \
@@ -46,7 +45,7 @@
 int main(int argc, char* argv[])
 {
 
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB, primbench::flags::sync);
 
     CREATE_BENCHMARK(int)
     CREATE_BENCHMARK(long long)

@@ -21,11 +21,10 @@
 // SOFTWARE.
 
 #include "benchmark_device_merge_sort.hpp"
-#include "benchmark_utils.hpp"
+#include "primbench.hpp"
 
 #include "../common/utils_custom_type.hpp"
 
-// HIP API
 #include <hip/hip_runtime.h>
 
 #include <rocprim/types.hpp>
@@ -35,11 +34,11 @@
 #include <string>
 #include <vector>
 
-#define CREATE_BENCHMARK(...) executor.queue_instance(device_merge_sort_benchmark<__VA_ARGS__>());
+#define CREATE_BENCHMARK(...) executor.queue<device_merge_sort_benchmark<__VA_ARGS__>>();
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB);
 
     CREATE_BENCHMARK(int)
     CREATE_BENCHMARK(long long)

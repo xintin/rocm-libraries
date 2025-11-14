@@ -21,11 +21,10 @@
 // SOFTWARE.
 
 #include "benchmark_device_find_end.hpp"
-#include "benchmark_utils.hpp"
+#include "primbench.hpp"
 
 #include "../common/utils_custom_type.hpp"
 
-// HIP API
 #include <hip/hip_runtime.h>
 
 #include <rocprim/types.hpp>
@@ -36,7 +35,7 @@
 #include <vector>
 
 #define CREATE_BENCHMARK_FIND_END(TYPE, KEY_SIZE, REPEATING) \
-    executor.queue_instance(device_find_end_benchmark<TYPE>(KEY_SIZE, REPEATING));
+    executor.queue<device_find_end_benchmark<TYPE>>(KEY_SIZE, REPEATING);
 
 #define CREATE_BENCHMARK_PATTERN(TYPE, REPEATING)    \
     CREATE_BENCHMARK_FIND_END(TYPE, 10, REPEATING)   \
@@ -50,7 +49,7 @@
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB);
 
     CREATE_BENCHMARK(int)
     CREATE_BENCHMARK(long long)

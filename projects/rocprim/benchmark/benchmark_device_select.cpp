@@ -20,25 +20,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "benchmark_device_select.parallel.hpp"
-#include "benchmark_utils.hpp"
+#include "benchmark_device_select.hpp"
+#include "primbench.hpp"
 
 #define CREATE_SELECT_PREDICATED_FLAG_BENCHMARK(T, F, p) \
-    executor.queue_instance(                             \
-        device_select_predicated_flag_benchmark<T, F, rocprim::default_config, p>());
+    executor.queue<device_select_predicated_flag_benchmark<T, F, rocprim::default_config, p>>();
 
 #define CREATE_SELECT_FLAG_BENCHMARK(T, F, p) \
-    executor.queue_instance(device_select_flag_benchmark<T, rocprim::default_config, F, p>());
+    executor.queue<device_select_flag_benchmark<T, rocprim::default_config, F, p>>();
 
 #define CREATE_SELECT_PREDICATE_BENCHMARK(T, p) \
-    executor.queue_instance(device_select_predicate_benchmark<T, rocprim::default_config, p>());
+    executor.queue<device_select_predicate_benchmark<T, rocprim::default_config, p>>();
 
 #define CREATE_UNIQUE_BENCHMARK(T, p) \
-    executor.queue_instance(device_select_unique_benchmark<T, rocprim::default_config, p>());
+    executor.queue<device_select_unique_benchmark<T, rocprim::default_config, p>>();
 
 #define CREATE_UNIQUE_BY_KEY_BENCHMARK(K, V, p) \
-    executor.queue_instance(                    \
-        device_select_unique_by_key_benchmark<K, V, rocprim::default_config, p>());
+    executor.queue<device_select_unique_by_key_benchmark<K, V, rocprim::default_config, p>>();
 
 #define BENCHMARK_SELECT_PREDICATED_FLAG_TYPE(type, value)                         \
     CREATE_SELECT_PREDICATED_FLAG_BENCHMARK(type, value, select_probability::p005) \
@@ -86,7 +84,7 @@
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB);
 
 #ifndef BENCHMARK_CONFIG_TUNING
     // Tuned types

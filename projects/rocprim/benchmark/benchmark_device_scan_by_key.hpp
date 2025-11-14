@@ -20,8 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_SCAN_BY_KEY_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_SCAN_BY_KEY_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
@@ -30,13 +31,8 @@
     #include "../common/utils_custom_type.hpp"
 #endif
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/config.hpp>
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
@@ -61,19 +57,32 @@
     #include <stdint.h>
 #endif
 
+inline const char* get_block_scan_algorithm_name(rocprim::block_scan_algorithm alg)
+{
+    switch(alg)
+    {
+        case rocprim::block_scan_algorithm::using_warp_scan:
+            return "block_scan_algorithm::using_warp_scan";
+        case rocprim::block_scan_algorithm::reduce_then_scan:
+            return "block_scan_algorithm::reduce_then_scan";
+            // Not using `default: ...` because it kills effectiveness of -Wswitch
+    }
+    return "default_algorithm";
+}
+
 template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::scan_by_key_config_params config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread) + ",method:"
-           + std::string(get_block_scan_algorithm_name(config.block_scan_method)) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + ",\"method\":\""
+           + std::string(get_block_scan_algorithm_name(config.block_scan_method)) + "\"}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<bool Exclusive,
@@ -84,16 +93,26 @@ template<bool Exclusive,
          unsigned int MaxSegmentLength,
          bool         Deterministic,
          typename Config = rocprim::default_config>
-struct device_scan_by_key_benchmark : public benchmark_utils::autotune_interface
+struct device_scan_by_key_benchmark : public primbench::benchmark_interface
 {
+    std::string algo() const override
+    {
+        if constexpr(Deterministic)
+        {
+            return "device_scan_by_key_deterministic";
+        }
+        else
+        {
+            return "device_scan_by_key";
+        }
+    }
+
     std::string name() const override
     {
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:scan_by_key,exclusive:" + (Exclusive ? "true"s : "false"s)
-            + ",key_type:" + std::string(Traits<Key>::name())
-            + ",value_type:" + std::string(Traits<Value>::name()) + ",max_segment_length:"
-            + std::to_string(MaxSegmentLength) + ",cfg:" + config_name<Config>() + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"exclusive\":"
+               + (Exclusive ? "true" : "false") + ",\"key_type\":\"" + Traits<Key>::name()
+               + "\",\"value_type\":\"" + Traits<Value>::name() + "\",\"max_segment_length\":"
+               + std::to_string(MaxSegmentLength) + ",\"cfg\":" + config_name<Config>() + "}";
     }
 
     template<bool excl = Exclusive>
@@ -182,24 +201,23 @@ struct device_scan_by_key_benchmark : public benchmark_utils::autotune_interface
         }
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
         const auto& seed   = state.seed;
 
-        // Calculate the number of elements
-        size_t size = bytes / sizeof(Value);
+        size_t items = bytes / sizeof(Value);
 
         constexpr bool debug = false;
 
         const std::vector<Key> keys
-            = get_random_segments<Key>(size, MaxSegmentLength, seed.get_0());
+            = get_random_segments<Key>(items, MaxSegmentLength, seed.get_0());
 
         const auto random_range = limit_random_range<Value>(0, 1000);
 
         const std::vector<Value> input
-            = get_random_data<Value>(size, random_range.first, random_range.second, seed.get_1());
+            = get_random_data<Value>(items, random_range.first, random_range.second, seed.get_1());
 
         ScanOp    scan_op{};
         CompareOp compare_op{};
@@ -211,6 +229,7 @@ struct device_scan_by_key_benchmark : public benchmark_utils::autotune_interface
 
         // Allocate temporary storage memory
         size_t temp_storage_size_bytes;
+
         // Get size of d_temp_storage
         HIP_CHECK((run_device_scan_by_key(nullptr,
                                           temp_storage_size_bytes,
@@ -218,12 +237,16 @@ struct device_scan_by_key_benchmark : public benchmark_utils::autotune_interface
                                           d_input.get(),
                                           d_output.get(),
                                           initial_value,
-                                          size,
+                                          items,
                                           scan_op,
                                           compare_op,
                                           stream,
                                           debug)));
         common::device_ptr<void> d_temp_storage(temp_storage_size_bytes);
+
+        state.set_items(items);
+        state.add_reads<Key>(items);
+        state.add_reads<Value>(items);
 
         state.run(
             [&]
@@ -234,14 +257,12 @@ struct device_scan_by_key_benchmark : public benchmark_utils::autotune_interface
                                                   d_input.get(),
                                                   d_output.get(),
                                                   initial_value,
-                                                  size,
+                                                  items,
                                                   scan_op,
                                                   compare_op,
                                                   stream,
                                                   debug)));
             });
-
-        state.set_throughput(size, sizeof(Key) + sizeof(Value));
     }
 };
 
@@ -260,7 +281,7 @@ struct device_scan_by_key_benchmark_generator
             struct create_ipt
             {
                 void operator()(
-                    std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+                    std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
                 {
                     storage.emplace_back(std::make_unique<device_scan_by_key_benchmark<
                                              false,
@@ -279,8 +300,7 @@ struct device_scan_by_key_benchmark_generator
                 }
             };
 
-            void operator()(
-                std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+            void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
             {
                 // Limit items per thread to not over-use shared memory
                 static constexpr unsigned int max_items_per_thread = ::rocprim::min<size_t>(
@@ -289,37 +309,38 @@ struct device_scan_by_key_benchmark_generator
                            * (sizeof(KeyType) + sizeof(ValueType)
                               + (sizeof(KeyType) == 16 && sizeof(ValueType) == 1))),
                     24);
-                static_for_each<make_index_range<unsigned int, 1, max_items_per_thread>,
-                                create_ipt>(storage);
+                primbench::autotuning::static_for_each<
+                    primbench::autotuning::make_index_range<unsigned int, 1, max_items_per_thread>,
+                    create_ipt>(storage);
             }
 
             static constexpr unsigned int block_size = 1u << BlockSizeExponent;
         };
 
-        static void
-            create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
-            static_for_each<index_range, create_block_size>(storage);
+            primbench::autotuning::static_for_each<index_range, create_block_size>(storage);
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         // Block sizes 64, 128, 256
-        create_block_scan_algorithm<make_index_range<unsigned int, 6, 8>>::create(storage);
+        create_block_scan_algorithm<
+            primbench::autotuning::make_index_range<unsigned int, 6, 8>>::create(storage);
     }
 };
 
 #else // BENCHMARK_CONFIG_TUNING
 
-    #define CREATE_BY_KEY_BENCHMARK(EXCL, T, SCAN_OP, MAX_SEGMENT_LENGTH)            \
-        executor.queue_instance(device_scan_by_key_benchmark<EXCL,                   \
-                                                             int,                    \
-                                                             T,                      \
-                                                             SCAN_OP,                \
-                                                             rocprim::equal_to<int>, \
-                                                             MAX_SEGMENT_LENGTH,     \
-                                                             Deterministic>());
+    #define CREATE_BY_KEY_BENCHMARK(EXCL, T, SCAN_OP, MAX_SEGMENT_LENGTH)   \
+        executor.queue<device_scan_by_key_benchmark<EXCL,                   \
+                                                    int,                    \
+                                                    T,                      \
+                                                    SCAN_OP,                \
+                                                    rocprim::equal_to<int>, \
+                                                    MAX_SEGMENT_LENGTH,     \
+                                                    Deterministic>>();
 
     #define CREATE_EXCL_INCL_BENCHMARK(EXCL, T, SCAN_OP) \
         CREATE_BY_KEY_BENCHMARK(EXCL, T, SCAN_OP, 1)     \
@@ -332,14 +353,14 @@ struct device_scan_by_key_benchmark_generator
         CREATE_EXCL_INCL_BENCHMARK(false, T, rocprim::plus<T>) \
         CREATE_EXCL_INCL_BENCHMARK(true, T, rocprim::plus<T>)
 
-    #define BENCHMARK_TYPE_TUNING(KEY_TYPE, VALUE_TYPE)                                   \
-        executor.queue_instance(device_scan_by_key_benchmark<false,                       \
-                                                             KEY_TYPE,                    \
-                                                             VALUE_TYPE,                  \
-                                                             rocprim::plus<VALUE_TYPE>,   \
-                                                             rocprim::equal_to<KEY_TYPE>, \
-                                                             1024,                        \
-                                                             false>());
+    #define BENCHMARK_TYPE_TUNING(KEY_TYPE, VALUE_TYPE)                          \
+        executor.queue<device_scan_by_key_benchmark<false,                       \
+                                                    KEY_TYPE,                    \
+                                                    VALUE_TYPE,                  \
+                                                    rocprim::plus<VALUE_TYPE>,   \
+                                                    rocprim::equal_to<KEY_TYPE>, \
+                                                    1024,                        \
+                                                    false>>();
 
     // All of the limited tuned types
     #define BENCHMARK_TYPES_TUNING(KEY_TYPE)               \
@@ -350,7 +371,7 @@ struct device_scan_by_key_benchmark_generator
         BENCHMARK_TYPE_TUNING(KEY_TYPE, int8_t)
 
 template<bool Deterministic>
-void add_benchmarks(benchmark_utils::executor& executor)
+void add_benchmarks(primbench::executor& executor)
 {
     // Tuned types
     BENCHMARK_TYPES_TUNING(rocprim::int128_t)
@@ -382,5 +403,3 @@ void add_benchmarks(benchmark_utils::executor& executor)
 }
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_SCAN_BY_KEY_PARALLEL_HPP_

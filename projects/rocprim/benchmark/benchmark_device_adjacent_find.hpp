@@ -20,26 +20,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_ADJACENT_FIND_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_ADJACENT_FIND_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_data_generation.hpp"
 
-// gbench
-#include <benchmark/benchmark.h>
-
-// HIP
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_adjacent_find.hpp>
 #include <rocprim/functional.hpp>
 
-// C++ Standard Library
 #include <algorithm>
 #include <cstddef>
 #include <memory>
@@ -53,33 +48,35 @@ template<typename Config>
 std::string config_name()
 {
     auto config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + "}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename InputT,
          unsigned int FirstAdjPosDecimal,
          typename Config = rocprim::default_config>
-struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interface
+struct device_adjacent_find_benchmark : public primbench::benchmark_interface
 {
+    std::string algo() const override
+    {
+        return "device_adjacent_find";
+    }
 
     std::string name() const override
     {
-
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:adjacent_find,input_type:" + std::string(Traits<InputT>::name())
-            + ",first_adj_pos:" + std::to_string(FirstAdjPosDecimal * 0.1f)
-            + ",cfg:" + config_name<Config>() + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"input_type\":\""
+               + Traits<InputT>::name()
+               + "\",\"first_adj_pos\":" + std::to_string(FirstAdjPosDecimal * 0.1f)
+               + ",\"cfg\":" + config_name<Config>() + "}";
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -88,17 +85,23 @@ struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interfa
         using input_type  = InputT;
         using output_type = std::size_t;
 
-        const size_t size = bytes / sizeof(input_type);
+        const size_t items = bytes / sizeof(input_type);
+
+        if(items < 2)
+        {
+            std::cerr << "Must have at least two elements for adjacent_find to make sense\n";
+            exit(EXIT_FAILURE);
+        }
 
         // Get index of the first adjacent equal pair
-        std::size_t first_adj_index = static_cast<std::size_t>(size * FirstAdjPosDecimal * 0.1f);
-        if(first_adj_index >= size - 1)
+        std::size_t first_adj_index = static_cast<std::size_t>(items * FirstAdjPosDecimal * 0.1f);
+        if(first_adj_index >= items - 1)
         {
-            first_adj_index = size - 2;
+            first_adj_index = items - 2;
         }
 
         // Generate data ensuring there is no adjacent pair before first_adj_index
-        std::vector<input_type> input(size);
+        std::vector<input_type> input(items);
         if(std::is_same<input_type, int8_t>::value)
         {
             // For int8_t that has a very limited range of values, iota initialization
@@ -107,11 +110,11 @@ struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interfa
         }
         else
         {
-            input = get_random_data<input_type>(size,
+            input = get_random_data<input_type>(items,
                                                 common::generate_limits<input_type>::min(),
                                                 common::generate_limits<input_type>::max(),
                                                 seed.get_0());
-            std::vector<std::size_t> iota(size);
+            std::vector<std::size_t> iota(items);
             std::iota(iota.begin(), iota.end(), 0);
             std::transform(iota.begin() + 1,
                            iota.begin() + first_adj_index + 1,
@@ -134,7 +137,7 @@ struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interfa
 
         input_type*  d_input;
         output_type* d_output;
-        HIP_CHECK(hipMalloc(&d_input, size * sizeof(*d_input)));
+        HIP_CHECK(hipMalloc(&d_input, items * sizeof(*d_input)));
         HIP_CHECK(hipMalloc(&d_output, sizeof(*d_output)));
         HIP_CHECK(hipMemcpy(d_input,
                             input.data(),
@@ -149,7 +152,7 @@ struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interfa
                                                        tmp_storage_size,
                                                        d_input,
                                                        d_output,
-                                                       size,
+                                                       items,
                                                        rocprim::equal_to<input_type>{},
                                                        stream,
                                                        false));
@@ -159,9 +162,10 @@ struct device_adjacent_find_benchmark : public benchmark_utils::autotune_interfa
         launch_adjacent_find();
         HIP_CHECK(hipMalloc(&d_tmp_storage, tmp_storage_size));
 
-        state.run([&] { launch_adjacent_find(); });
+        state.set_items(first_adj_index);
+        state.add_reads<input_type>(first_adj_index);
 
-        state.set_throughput(first_adj_index, sizeof(input_type));
+        state.run([&] { launch_adjacent_find(); });
 
         HIP_CHECK(hipFree(d_input));
         HIP_CHECK(hipFree(d_output));
@@ -184,8 +188,7 @@ struct device_adjacent_find_benchmark_generator
             static constexpr unsigned int items_per_thread = 1u << ItemsPerThreadExp;
             using generated_config = rocprim::adjacent_find_config<BlockSize, items_per_thread>;
 
-            void operator()(
-                std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+            void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
             {
                 storage.emplace_back(
                     std::make_unique<device_adjacent_find_benchmark<InputT,
@@ -193,18 +196,19 @@ struct device_adjacent_find_benchmark_generator
                                                                     generated_config>>());
             }
         };
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
-            static_for_each<
-                make_index_range<unsigned int, min_items_per_thread, max_items_per_thread_exponent>,
+            primbench::autotuning::static_for_each<
+                primbench::autotuning::make_index_range<unsigned int,
+                                                        min_items_per_thread,
+                                                        max_items_per_thread_exponent>,
                 create_ipt>(storage);
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
-        static_for_each<std::integer_sequence<unsigned int, 1, 5, 9>, create_pos>(storage);
+        primbench::autotuning::static_for_each<std::integer_sequence<unsigned int, 1, 5, 9>,
+                                               create_pos>(storage);
     }
 };
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_ADJACENT_FIND_PARALLEL_HPP_

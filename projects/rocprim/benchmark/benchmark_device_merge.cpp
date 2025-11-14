@@ -20,17 +20,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "benchmark_device_merge.parallel.hpp"
-#include "benchmark_utils.hpp"
+#include "benchmark_device_merge.hpp"
+#include "primbench.hpp"
 
 #ifndef BENCHMARK_CONFIG_TUNING
     #include "../common/utils_custom_type.hpp"
 #endif
 
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #ifndef BENCHMARK_CONFIG_TUNING
     #include <rocprim/types.hpp>
 #endif
@@ -42,7 +40,7 @@
     #include <stdint.h>
 #endif
 
-#define CREATE_BENCHMARK(...) executor.queue_instance(device_merge_benchmark<__VA_ARGS__>());
+#define CREATE_BENCHMARK(...) executor.queue<device_merge_benchmark<__VA_ARGS__>>();
 
 #define CREATE_BENCHMARK_TYPE_TUNING(KeyType)      \
     CREATE_BENCHMARK(KeyType, rocprim::empty_type) \
@@ -54,7 +52,7 @@
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB);
 
 #ifndef BENCHMARK_CONFIG_TUNING
     // Tuned types

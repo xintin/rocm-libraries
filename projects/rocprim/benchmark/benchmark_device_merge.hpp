@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_MERGE_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_MERGE_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM HIP API
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_merge.hpp>
@@ -54,32 +50,42 @@ template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::merge_config_params params = Config();
-    return "{bs:" + std::to_string(params.kernel_config.block_size)
-           + ",ipt:" + std::to_string(params.kernel_config.items_per_thread) + "}";
+    return "{\"bs\":" + std::to_string(params.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(params.kernel_config.items_per_thread) + "}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename KeyType,
          typename ValueType = rocprim::empty_type,
          typename Config    = rocprim::default_config>
-struct device_merge_benchmark : public benchmark_utils::autotune_interface
+struct device_merge_benchmark : public primbench::benchmark_interface
 {
-    std::string name() const override
+    std::string algo() const override
     {
-        return bench_naming::format_name("{lvl:device,algo:merge,key_type:"
-                                         + std::string(Traits<KeyType>::name())
-                                         + ",value_type:" + std::string(Traits<ValueType>::name())
-                                         + ",cfg:" + config_name<Config>() + "}");
+        return "device_merge";
     }
 
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"key_type\":\""
+               + Traits<KeyType>::name() + "\",\"value_type\":\"" + Traits<ValueType>::name()
+               + "\",\"cfg\":" + config_name<Config>() + "}";
+    }
+
+    void run(primbench::state& state) override
+    {
+        do_run(std::forward<primbench::state>(state));
+    }
+
+private:
     // keys benchmark
     template<typename val = ValueType>
-    auto do_run(benchmark_utils::state&& state) const ->
+    auto do_run(primbench::state&& state) const ->
         typename std::enable_if<std::is_same<val, ::rocprim::empty_type>::value, void>::type
     {
         const auto& stream = state.stream;
@@ -92,33 +98,40 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                       half_less,
                                       rocprim::less<key_type>>::type;
 
-        size_t size = bytes / sizeof(key_type);
+        size_t items = bytes / sizeof(key_type);
 
-        const size_t size1 = size / 2;
-        const size_t size2 = size - size1;
+        const size_t size1 = items / 2;
+        const size_t size2 = items - size1;
 
         compare_op_type compare_op;
 
         // Generate data
-        const auto random_range = limit_random_range<key_type>(0, size);
+        primbench::log("Generating random_range");
+        const auto random_range = limit_random_range<key_type>(0, items);
 
+        primbench::log("Generating keys_input1");
         std::vector<key_type> keys_input1 = get_random_data<key_type>(size1,
                                                                       random_range.first,
                                                                       random_range.second,
                                                                       seed.get_0());
+        primbench::log("Generating keys_input2");
         std::vector<key_type> keys_input2 = get_random_data<key_type>(size2,
                                                                       random_range.first,
                                                                       random_range.second,
                                                                       seed.get_1());
+        primbench::log("Sorting keys_input1");
         std::sort(keys_input1.begin(), keys_input1.end(), compare_op);
+        primbench::log("Sorting keys_input2");
         std::sort(keys_input2.begin(), keys_input2.end(), compare_op);
 
+        primbench::log("Creating device pointers");
         common::device_ptr<key_type> d_keys_input1(keys_input1);
         common::device_ptr<key_type> d_keys_input2(keys_input2);
-        common::device_ptr<key_type> d_keys_output(size);
+        common::device_ptr<key_type> d_keys_output(items);
 
+        primbench::log("Calculating d_temporary_storage size");
         common::device_ptr<void> d_temporary_storage;
-        size_t temporary_storage_bytes = 0;
+        size_t                   temporary_storage_bytes = 0;
         HIP_CHECK(rocprim::merge<Config>(d_temporary_storage.get(),
                                          temporary_storage_bytes,
                                          d_keys_input1.get(),
@@ -130,7 +143,11 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                          stream,
                                          false));
 
+        primbench::log("Resizing d_temporary_storage");
         d_temporary_storage.resize(temporary_storage_bytes);
+
+        state.set_items(items);
+        state.add_reads<key_type>(items);
 
         state.run(
             [&]
@@ -146,13 +163,11 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                                  stream,
                                                  false));
             });
-
-        state.set_throughput(size, sizeof(key_type));
     }
 
     // pairs benchmark
     template<typename val = ValueType>
-    auto do_run(benchmark_utils::state&& state) const ->
+    auto do_run(primbench::state&& state) const ->
         typename std::enable_if<!std::is_same<val, ::rocprim::empty_type>::value, void>::type
     {
         const auto& stream = state.stream;
@@ -166,39 +181,54 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                       half_less,
                                       rocprim::less<key_type>>::type;
 
-        size_t size = bytes / sizeof(key_type);
+        size_t items = bytes / sizeof(key_type);
 
-        const size_t size1 = size / 2;
-        const size_t size2 = size - size1;
+        const size_t size1 = items / 2;
+        const size_t size2 = items - size1;
 
         compare_op_type compare_op;
 
         // Generate data
-        const auto            random_range = limit_random_range<key_type>(0, size);
-        std::vector<key_type> keys_input1  = get_random_data<key_type>(size1,
+        primbench::log("Generating random_range");
+        const auto random_range = limit_random_range<key_type>(0, items);
+
+        primbench::log("Generating keys_input1");
+        std::vector<key_type> keys_input1 = get_random_data<key_type>(size1,
                                                                       random_range.first,
                                                                       random_range.second,
                                                                       seed.get_0());
-        std::vector<key_type> keys_input2  = get_random_data<key_type>(size2,
+        primbench::log("Generating keys_input2");
+        std::vector<key_type> keys_input2 = get_random_data<key_type>(size2,
                                                                       random_range.first,
                                                                       random_range.second,
                                                                       seed.get_1());
+
+        primbench::log("Sorting keys_input1");
         std::sort(keys_input1.begin(), keys_input1.end(), compare_op);
+        primbench::log("Sorting keys_input2");
         std::sort(keys_input2.begin(), keys_input2.end(), compare_op);
+
+        primbench::log("Allocating values_input1");
         std::vector<value_type> values_input1(size1);
+        primbench::log("Allocating values_input2");
         std::vector<value_type> values_input2(size2);
+
+        primbench::log("Filling values_input1");
         std::iota(values_input1.begin(), values_input1.end(), 0);
+        primbench::log("Filling values_input2");
         std::iota(values_input2.begin(), values_input2.end(), size1);
 
+        primbench::log("Creating device pointers");
         common::device_ptr<key_type>   d_keys_input1(keys_input1);
         common::device_ptr<key_type>   d_keys_input2(keys_input2);
-        common::device_ptr<key_type>   d_keys_output(size);
+        common::device_ptr<key_type>   d_keys_output(items);
         common::device_ptr<value_type> d_values_input1(size1);
         common::device_ptr<value_type> d_values_input2(size2);
-        common::device_ptr<value_type> d_values_output(size);
+        common::device_ptr<value_type> d_values_output(items);
 
+        primbench::log("Calculating d_temporary_storage size");
         common::device_ptr<void> d_temporary_storage;
-        size_t temporary_storage_bytes = 0;
+        size_t                   temporary_storage_bytes = 0;
         HIP_CHECK(rocprim::merge<Config>(d_temporary_storage.get(),
                                          temporary_storage_bytes,
                                          d_keys_input1.get(),
@@ -213,8 +243,12 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                          stream,
                                          false));
 
+        primbench::log("Resizing d_temporary_storage");
         d_temporary_storage.resize(temporary_storage_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<key_type>(items);
+        state.add_reads<value_type>(items);
 
         state.run(
             [&]
@@ -233,13 +267,6 @@ struct device_merge_benchmark : public benchmark_utils::autotune_interface
                                                  stream,
                                                  false));
             });
-
-        state.set_throughput(size, sizeof(key_type) + sizeof(value_type));
-    }
-
-    void run(benchmark_utils::state&& state) override
-    {
-        do_run(std::forward<benchmark_utils::state>(state));
     }
 };
 
@@ -255,7 +282,7 @@ struct device_merge_benchmark_generator
         using generated_config = rocprim::merge_config<BlockSize, items_per_thread>;
         using benchmark_struct = device_merge_benchmark<KeyType, ValueType, generated_config>;
 
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
             storage.emplace_back(std::make_unique<benchmark_struct>());
         }
@@ -267,13 +294,13 @@ struct device_merge_benchmark_generator
             typename rocprim::detail::default_merge_config_base<KeyType, ValueType>::type;
         using benchmark_struct = device_merge_benchmark<KeyType, ValueType, default_config>;
 
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
             storage.emplace_back(std::make_unique<benchmark_struct>());
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         static constexpr unsigned int min_items_per_thread_exponent = 0u;
 
@@ -288,13 +315,12 @@ struct device_merge_benchmark_generator
 
         create_default_config()(storage);
 
-        static_for_each<make_index_range<unsigned int,
-                                         min_items_per_thread_exponent,
-                                         max_items_per_thread_exponent>,
-                        create_ipt>(storage);
+        primbench::autotuning::static_for_each<
+            primbench::autotuning::make_index_range<unsigned int,
+                                                    min_items_per_thread_exponent,
+                                                    max_items_per_thread_exponent>,
+            create_ipt>(storage);
     }
 };
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_MERGE_PARALLEL_HPP_

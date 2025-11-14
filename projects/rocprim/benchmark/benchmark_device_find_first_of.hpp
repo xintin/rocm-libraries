@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_FIND_FIRST_OF_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_FIND_FIRST_OF_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_data_generation.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_find_first_of.hpp>
@@ -49,49 +45,49 @@ template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::find_first_of_config_params config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + "}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T, typename Config = rocprim::default_config>
-struct device_find_first_of_benchmark : public benchmark_utils::autotune_interface
+struct device_find_first_of_benchmark : public primbench::benchmark_interface
 {
-    std::vector<size_t> keys_sizes;
-    std::vector<double> first_occurrences;
-
     device_find_first_of_benchmark(size_t keys_size, double first_occurrence)
     {
-        keys_sizes.push_back(keys_size);
-        first_occurrences.push_back(first_occurrence);
+        m_keys_sizes.push_back(keys_size);
+        m_first_occurrences.push_back(first_occurrence);
     }
 
     device_find_first_of_benchmark(const std::vector<size_t>& keys_sizes,
                                    const std::vector<double>& first_occurrences)
+        : m_keys_sizes(keys_sizes), m_first_occurrences(first_occurrences)
+    {}
+
+    std::string algo() const override
     {
-        this->keys_sizes        = keys_sizes;
-        this->first_occurrences = first_occurrences;
+        return "device_find_first_of";
     }
 
     std::string name() const override
     {
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:find_first_of,"s
-            + (keys_sizes.size() == 1 ? "keys_size:"s + std::to_string(keys_sizes[0]) : ""s)
-            + (first_occurrences.size() == 1
-                   ? ",first_occurrence:"s + std::to_string(first_occurrences[0])
-                   : ""s)
-            + ",value_type:"s + std::string(Traits<T>::name()) + ",cfg:" + config_name<Config>()
-            + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\","
+               + (m_keys_sizes.size() == 1
+                      ? "\"keys_size\":\"" + std::to_string(m_keys_sizes[0]) + "\""
+                      : "")
+               + (m_first_occurrences.size() == 1
+                      ? ",\"first_occurrence\":\"" + std::to_string(m_first_occurrences[0]) + "\""
+                      : "")
+               + ",\"value_type\":\"" + Traits<T>::name() + "\",\"cfg\":" + config_name<Config>()
+               + "}";
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -101,29 +97,33 @@ struct device_find_first_of_benchmark : public benchmark_utils::autotune_interfa
         using key_type    = T;
         using output_type = size_t;
 
-        const size_t size = bytes / sizeof(type);
+        const size_t items = bytes / sizeof(type);
 
-        const size_t max_keys_size = *std::max_element(keys_sizes.begin(), keys_sizes.end());
+        primbench::log("Calculating max_keys_size");
+        const size_t max_keys_size = *std::max_element(m_keys_sizes.begin(), m_keys_sizes.end());
 
-        // Generate data
+        primbench::log("Generating key_input");
         std::vector<key_type> key_input
             = get_random_data<key_type>(max_keys_size, 0, 100, seed.get_0());
+        primbench::log("Generating input");
         std::vector<type> input
-            = get_random_data<type>(size, 101, common::generate_limits<type>::max(), seed.get_0());
+            = get_random_data<type>(items, 101, common::generate_limits<type>::max(), seed.get_0());
 
-        std::vector<type*> d_inputs(first_occurrences.size());
-        for(size_t fi = 0; fi < first_occurrences.size(); ++fi)
+        primbench::log("Creating d_inputs");
+        std::vector<type*> d_inputs(m_first_occurrences.size());
+        primbench::log("Filling d_inputs");
+        for(size_t fi = 0; fi < m_first_occurrences.size(); ++fi)
         {
             type* d_input;
-            HIP_CHECK(hipMalloc(&d_input, size * sizeof(*d_input)));
+            HIP_CHECK(hipMalloc(&d_input, items * sizeof(*d_input)));
             HIP_CHECK(hipMemcpyAsync(d_input,
                                      input.data(),
                                      input.size() * sizeof(*d_input),
                                      hipMemcpyHostToDevice,
                                      stream));
             // Set the first occurrence of keys in input
-            const size_t p = static_cast<size_t>(size * first_occurrences[fi]);
-            if(p < size)
+            const size_t p = static_cast<size_t>(items * m_first_occurrences[fi]);
+            if(p < items)
             {
                 const type key = key_input[0];
                 HIP_CHECK(hipMemcpyAsync(d_input + p,
@@ -137,9 +137,11 @@ struct device_find_first_of_benchmark : public benchmark_utils::autotune_interfa
 
         key_type*    d_key_input;
         output_type* d_output;
+        primbench::log("Allocating d_key_input and d_output");
         HIP_CHECK(hipMalloc(&d_key_input, max_keys_size * sizeof(*d_key_input)));
         HIP_CHECK(hipMalloc(&d_output, sizeof(*d_output)));
 
+        primbench::log("Copying key_input to d_key_input");
         HIP_CHECK(hipMemcpy(d_key_input,
                             key_input.data(),
                             key_input.size() * sizeof(*d_key_input),
@@ -164,53 +166,57 @@ struct device_find_first_of_benchmark : public benchmark_utils::autotune_interfa
         };
 
         size_t max_temporary_storage_bytes = 0;
-        for(size_t keys_size : keys_sizes)
+        primbench::log("Calculating max_temporary_storage_bytes");
+        for(size_t keys_size : m_keys_sizes)
         {
             launch(keys_size, d_inputs[0]);
             max_temporary_storage_bytes
                 = std::max(max_temporary_storage_bytes, temporary_storage_bytes);
         }
         temporary_storage_bytes = max_temporary_storage_bytes;
+        primbench::log("Allocating d_temporary_storage");
         HIP_CHECK(hipMalloc(&d_temporary_storage, temporary_storage_bytes));
+
+        // Only a part of data (before the first occurrence) must be actually processed. In ideal
+        // cases when no thread blocks do unneeded work (i.e. exit early once the match is found),
+        // performance for different values of first_occurrence must be similar.
+        size_t sum_effective_size = 0;
+        for(double first_occurrence : m_first_occurrences)
+        {
+            sum_effective_size += static_cast<size_t>(items * first_occurrence);
+        }
+
+        // TODO: Remove?
+        // Each input is read once but all keys are read by all threads so performance is likely
+        // compute-bound or bound by cache bandwidth for reading keys rather than reading inputs.
+        // Let's additionally report the rate of comparisons to see if it reaches a plateau with
+        // increasing keys_size.
+        // size_t sum_keys_size = 0;
+        // for(size_t keys_size : m_keys_sizes)
+        // {
+        //     sum_keys_size += keys_size;
+        // }
+        // state.gbench_state.counters["comparisons_per_second"] = benchmark::Counter(
+        //     static_cast<double>(state.gbench_state.iterations() * state.batch_iterations
+        //                         * sum_effective_size * sum_keys_size),
+        //     benchmark::Counter::kIsRate);
+
+        state.set_items(sum_effective_size);
+        state.add_reads<type>(sum_effective_size);
 
         state.run(
             [&]
             {
-                for(size_t fi = 0; fi < first_occurrences.size(); ++fi)
+                for(size_t fi = 0; fi < m_first_occurrences.size(); ++fi)
                 {
-                    for(size_t keys_size : keys_sizes)
+                    for(size_t keys_size : m_keys_sizes)
                     {
                         launch(keys_size, d_inputs[fi]);
                     }
                 }
             });
 
-        // Only a part of data (before the first occurrence) must be actually processed. In ideal
-        // cases when no thread blocks do unneeded work (i.e. exit early once the match is found),
-        // performance for different values of first_occurrence must be similar.
-        size_t sum_effective_size = 0;
-        for(double first_occurrence : first_occurrences)
-        {
-            sum_effective_size += static_cast<size_t>(size * first_occurrence);
-        }
-        size_t sum_keys_size = 0;
-        for(size_t keys_size : keys_sizes)
-        {
-            sum_keys_size += keys_size;
-        }
-
-        state.set_throughput(sum_effective_size, sizeof(type));
-
-        // Each input is read once but all keys are read by all threads so performance is likely
-        // compute-bound or bound by cache bandwidth for reading keys rather than reading inputs.
-        // Let's additionally report the rate of comparisons to see if it reaches a plateau with
-        // increasing keys_size.
-        state.gbench_state.counters["comparisons_per_second"] = benchmark::Counter(
-            static_cast<double>(state.gbench_state.iterations() * state.batch_iterations
-                                * sum_effective_size * sum_keys_size),
-            benchmark::Counter::kIsRate);
-
-        for(size_t fi = 0; fi < first_occurrences.size(); ++fi)
+        for(size_t fi = 0; fi < m_first_occurrences.size(); ++fi)
         {
             HIP_CHECK(hipFree(d_inputs[fi]));
         }
@@ -218,6 +224,10 @@ struct device_find_first_of_benchmark : public benchmark_utils::autotune_interfa
         HIP_CHECK(hipFree(d_output));
         HIP_CHECK(hipFree(d_temporary_storage));
     }
+
+private:
+    std::vector<size_t> m_keys_sizes;
+    std::vector<double> m_first_occurrences;
 };
 
 template<typename T, unsigned int BlockSize>
@@ -229,7 +239,7 @@ struct device_find_first_of_benchmark_generator
     {
         using generated_config = rocprim::find_first_of_config<BlockSize, ItemsPerThread>;
 
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
             std::vector<size_t> keys_sizes{1, 10, 100, 1000};
             std::vector<double> first_occurrences{0.1, 0.5, 1.0};
@@ -240,13 +250,13 @@ struct device_find_first_of_benchmark_generator
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         static constexpr unsigned int min_items_per_thread = 1;
         static constexpr unsigned int max_items_per_thread = 16;
-        static_for_each<make_index_range<unsigned int, min_items_per_thread, max_items_per_thread>,
-                        create_ipt>(storage);
+        primbench::autotuning::static_for_each<
+            primbench::autotuning::
+                make_index_range<unsigned int, min_items_per_thread, max_items_per_thread>,
+            create_ipt>(storage);
     }
 };
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_FIND_FIRST_OF_PARALLEL_HPP_

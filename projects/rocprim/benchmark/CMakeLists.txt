@@ -29,8 +29,6 @@ include(ConfigAutotuneSettings.cmake)
 option(BENCHMARK_TUNE_PARAM_NAMES "Tuning parameter names" "")
 option(BENCHMARK_TUNE_PARAMS "Tuning parameters" "")
 
-option(BENCHMARK_USE_AMDSMI "Let benchmarks use AMD SMI to output more GPU statistics" OFF)
-
 execute_process(
   COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
@@ -95,11 +93,7 @@ function(add_rocprim_benchmark BENCHMARK_SOURCE)
     target_compile_definitions(${BENCHMARK_TARGET} PUBLIC BENCHMARK_AUTOTUNED_TYPES_ONLY)
   endif()
 
-  target_link_libraries(${BENCHMARK_TARGET}
-    PRIVATE
-      rocprim
-      benchmark::benchmark
-  )
+  target_link_libraries(${BENCHMARK_TARGET} PRIVATE rocprim)
 
   if(USE_HIPCXX)
     target_link_libraries(${BENCHMARK_TARGET}

@@ -21,11 +21,10 @@
 // SOFTWARE.
 
 #include "benchmark_device_nth_element.hpp"
-#include "benchmark_utils.hpp"
+#include "primbench.hpp"
 
 #include "../common/utils_custom_type.hpp"
 
-// HIP API
 #include <hip/hip_runtime.h>
 
 #include <rocprim/types.hpp>
@@ -36,16 +35,15 @@
 #include <vector>
 
 #define CREATE_BENCHMARK_NTH_ELEMENT(TYPE, SMALL_N) \
-    executor.queue_instance(device_nth_element_benchmark<TYPE>(SMALL_N));
+    executor.queue<device_nth_element_benchmark<TYPE>>(SMALL_N);
 
-#define CREATE_BENCHMARK(TYPE)                                                             \
-    {                                                                                      \
-        CREATE_BENCHMARK_NTH_ELEMENT(TYPE, true) CREATE_BENCHMARK_NTH_ELEMENT(TYPE, false) \
-    }
+#define CREATE_BENCHMARK(TYPE)               \
+    CREATE_BENCHMARK_NTH_ELEMENT(TYPE, true) \
+    CREATE_BENCHMARK_NTH_ELEMENT(TYPE, false)
 
 int main(int argc, char* argv[])
 {
-    benchmark_utils::executor executor(argc, argv, 128 * benchmark_utils::MiB, 10, 5);
+    primbench::executor executor(argc, argv, 128 * primbench::MiB, primbench::flags::sync);
 
     CREATE_BENCHMARK(int)
     CREATE_BENCHMARK(long long)

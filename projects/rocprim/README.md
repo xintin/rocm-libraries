@@ -24,9 +24,6 @@ Optional:
 * [GoogleTest](https://github.com/google/googletest)
   * Required only for tests. Building tests is on by default.
   * This is automatically downloaded and built by the CMake script.
-* [Google Benchmark](https://github.com/google/benchmark)
-  * Required only for benchmarks. Building benchmarks is off by default.
-  * This is automatically downloaded and built by the CMake script.
 * [AMD SMI](https://github.com/ROCm/amdsmi)
   * Required only for benchmarks. Building benchmarks is off by default.
 

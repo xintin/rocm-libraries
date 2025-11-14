@@ -20,8 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_BINARY_SEARCH_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_BINARY_SEARCH_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
@@ -31,8 +32,6 @@
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_binary_search.hpp>
 #include <rocprim/functional.hpp>
-
-#include <benchmark/benchmark.h>
 
 #include <hip/hip_runtime_api.h>
 
@@ -123,7 +122,7 @@ std::string binary_search_config_name()
 template<>
 inline std::string binary_search_config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename SubAlgorithm,
@@ -132,17 +131,23 @@ template<typename SubAlgorithm,
          size_t K,
          bool   SortedNeedles,
          typename Config = rocprim::default_config>
-struct device_binary_search_benchmark : public benchmark_utils::autotune_interface
+struct device_binary_search_benchmark : public primbench::benchmark_interface
 {
-    std::string name() const override
+    std::string algo() const override
     {
-        return bench_naming::format_name("{lvl:device,algo:" + SubAlgorithm{}.name()
-                                         + ",value_type:" + std::string(Traits<T>::name())
-                                         + ",output_type:" + std::string(Traits<OutputType>::name())
-                                         + ",cfg:" + binary_search_config_name<Config>() + "}");
+        return "device_binary_search";
     }
 
-    void run(benchmark_utils::state&& state) override
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"subalgo\":\""
+               + SubAlgorithm{}.name() + "\",\"key_type\":\"" + Traits<T>::name()
+               + "\",\"output_type\":\"" + Traits<OutputType>::name() + "\",\"needles_percent\":"
+               + std::to_string(K) + ",\"sorted_needles\":" + (SortedNeedles ? "true" : "false")
+               + ",\"cfg\":" + binary_search_config_name<Config>() + "}";
+    }
+
+    void run(primbench::state& state) override
     {
         const auto& bytes  = state.bytes;
         const auto& seed   = state.seed;
@@ -153,19 +158,18 @@ struct device_binary_search_benchmark : public benchmark_utils::autotune_interfa
         using compare_op_type = typename std::
             conditional<std::is_same<T, rocprim::half>::value, half_less, rocprim::less<T>>::type;
 
-        // Calculate the number of elements from byte size
-        size_t haystack_size = bytes / sizeof(T);
-        size_t needles_size  = needles_bytes / sizeof(T);
+        size_t haystack_items = bytes / sizeof(T);
+        size_t needles_items  = needles_bytes / sizeof(T);
 
         compare_op_type compare_op;
 
         // Generate data
-        std::vector<T> haystack(haystack_size);
+        std::vector<T> haystack(haystack_items);
         std::iota(haystack.begin(), haystack.end(), 0);
 
-        const auto random_range = limit_random_range<T>(0, haystack_size);
+        const auto random_range = limit_random_range<T>(0, haystack_items);
 
-        std::vector<T> needles = get_random_data<T>(needles_size,
+        std::vector<T> needles = get_random_data<T>(needles_items,
                                                     random_range.first,
                                                     random_range.second,
                                                     seed.get_0());
@@ -176,7 +180,7 @@ struct device_binary_search_benchmark : public benchmark_utils::autotune_interfa
 
         common::device_ptr<T>          d_haystack(haystack);
         common::device_ptr<T>          d_needles(needles);
-        common::device_ptr<OutputType> d_output(needles_size);
+        common::device_ptr<OutputType> d_output(needles_items);
 
         size_t temporary_storage_bytes;
         auto   dispatch_helper = dispatch_binary_search_helper<Config>();
@@ -186,12 +190,15 @@ struct device_binary_search_benchmark : public benchmark_utils::autotune_interfa
                                                          d_haystack.get(),
                                                          d_needles.get(),
                                                          d_output.get(),
-                                                         haystack_size,
-                                                         needles_size,
+                                                         haystack_items,
+                                                         needles_items,
                                                          compare_op,
                                                          stream));
 
         common::device_ptr<void> d_temporary_storage(temporary_storage_bytes);
+
+        state.set_items(needles_items);
+        state.add_reads<T>(needles_items);
 
         state.run(
             [&]
@@ -202,14 +209,10 @@ struct device_binary_search_benchmark : public benchmark_utils::autotune_interfa
                                                                  d_haystack.get(),
                                                                  d_needles.get(),
                                                                  d_output.get(),
-                                                                 haystack_size,
-                                                                 needles_size,
+                                                                 haystack_items,
+                                                                 needles_items,
                                                                  compare_op,
                                                                  stream));
             });
-
-        state.set_throughput(needles_size, sizeof(T));
     }
 };
-
-#endif // ROCPRIM_BENCHMARK_BINARY_SEARCH_PARALLEL_HPP_

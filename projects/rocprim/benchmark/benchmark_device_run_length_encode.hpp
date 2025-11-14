@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_run_length_encode.hpp>
@@ -61,20 +57,25 @@ std::string run_length_encode_config_name()
 template<>
 inline std::string run_length_encode_config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T, size_t MaxLength, typename Config = rocprim::default_config>
-struct device_run_length_encode_benchmark : public benchmark_utils::autotune_interface
+struct device_run_length_encode_benchmark : public primbench::benchmark_interface
 {
+    std::string algo() const override
+    {
+        return "device_run_length_encode";
+    }
+
     std::string name() const override
     {
-        return bench_naming::format_name("{lvl:device,algo:run_length_encode,key_type:"
-                                         + std::string(Traits<T>::name())
-                                         + ",keys_max_length:" + std::to_string(MaxLength)
-                                         + ",cfg:" + run_length_encode_config_name<Config>() + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"key_type\":\"" + Traits<T>::name()
+               + "\",\"keys_max_length\":" + std::to_string(MaxLength)
+               + ",\"cfg\":" + run_length_encode_config_name<Config>() + "}";
     }
-    void run(benchmark_utils::state&& state) override
+
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -83,10 +84,10 @@ struct device_run_length_encode_benchmark : public benchmark_utils::autotune_int
         using key_type   = T;
         using count_type = unsigned int;
 
-        const size_t size = bytes / sizeof(T);
+        const size_t items = bytes / sizeof(T);
 
         // Generate data
-        std::vector<key_type> input(size);
+        std::vector<key_type> input(items);
 
         unsigned int        runs_count   = 0;
         const auto          random_range = limit_random_range<size_t>(1, MaxLength);
@@ -95,10 +96,10 @@ struct device_run_length_encode_benchmark : public benchmark_utils::autotune_int
                                                                  random_range.second,
                                                                  seed.get_0());
         size_t              offset       = 0;
-        while(offset < size)
+        while(offset < items)
         {
             const size_t key_count = key_counts[runs_count % key_counts.size()];
-            const size_t end       = std::min(size, offset + key_count);
+            const size_t end       = std::min(items, offset + key_count);
             for(size_t i = offset; i < end; ++i)
             {
                 input[i] = runs_count;
@@ -119,7 +120,7 @@ struct device_run_length_encode_benchmark : public benchmark_utils::autotune_int
         HIP_CHECK(rocprim::run_length_encode<Config>(nullptr,
                                                      temporary_storage_bytes,
                                                      d_input.get(),
-                                                     size,
+                                                     items,
                                                      d_unique_output.get(),
                                                      d_counts_output.get(),
                                                      d_runs_count_output.get(),
@@ -127,7 +128,9 @@ struct device_run_length_encode_benchmark : public benchmark_utils::autotune_int
                                                      false));
 
         common::device_ptr<void> d_temporary_storage(temporary_storage_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<key_type>(items);
 
         state.run(
             [&]
@@ -135,14 +138,13 @@ struct device_run_length_encode_benchmark : public benchmark_utils::autotune_int
                 HIP_CHECK(rocprim::run_length_encode<Config>(d_temporary_storage.get(),
                                                              temporary_storage_bytes,
                                                              d_input.get(),
-                                                             size,
+                                                             items,
                                                              d_unique_output.get(),
                                                              d_counts_output.get(),
                                                              d_runs_count_output.get(),
                                                              stream,
                                                              false));
             });
-        state.set_throughput(size, sizeof(key_type));
     }
 };
 
@@ -154,7 +156,7 @@ struct device_run_length_encode_benchmark_generator
     template<unsigned int ItemsPerThread>
     struct create_ipt
     {
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
             using config
                 = rocprim::reduce_by_key_config<BlockSize,
@@ -170,15 +172,14 @@ struct device_run_length_encode_benchmark_generator
         }
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
         static constexpr unsigned int max_items_per_thread
             = std::min(TUNING_SHARED_MEMORY_MAX / sizeof(T) / BlockSize - 1, size_t{15});
-        static_for_each<make_index_range<unsigned int, 4u, max_items_per_thread>, create_ipt>(
-            storage);
+        primbench::autotuning::static_for_each<
+            primbench::autotuning::make_index_range<unsigned int, 4u, max_items_per_thread>,
+            create_ipt>(storage);
     }
 };
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_PARALLEL_HPP_

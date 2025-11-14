@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_SEGMENTED_REDUCE_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_SEGMENTED_REDUCE_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/device_segmented_reduce.hpp>
 
 #include <iostream>
@@ -63,48 +59,47 @@ template<typename Config>
 std::string config_name()
 {
     const rocprim::detail::reduce_config_params config = Config();
-    return "{bs:" + std::to_string(config.kernel_config.block_size)
-           + ",ipt:" + std::to_string(config.kernel_config.items_per_thread)
-           + ",method:" + std::string(get_reduce_method_name(config.block_reduce_method)) + "}";
+    return "{\"bs\":" + std::to_string(config.kernel_config.block_size)
+           + ",\"ipt\":" + std::to_string(config.kernel_config.items_per_thread) + ",\"method\":\""
+           + std::string(get_reduce_method_name(config.block_reduce_method)) + "\"}";
 }
 
 template<>
 inline std::string config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T,
          typename BinaryFunction = rocprim::plus<T>,
          typename Config         = rocprim::default_config>
-struct device_segmented_reduce_benchmark : public benchmark_utils::autotune_interface
+struct device_segmented_reduce_benchmark : public primbench::benchmark_interface
 {
-private:
-    std::vector<size_t> desired_segments;
-    size_t              total_size;
-
-public:
     device_segmented_reduce_benchmark()
-    {
-        this->desired_segments = std::vector<size_t>{1, 10, 100, 1000, 10000};
-    }
+        : m_desired_segments(std::vector<size_t>{1, 10, 100, 1000, 10000})
+    {}
 
     device_segmented_reduce_benchmark(size_t desired_segment)
     {
-        desired_segments.push_back(desired_segment);
+        m_desired_segments.push_back(desired_segment);
+    }
+
+    std::string algo() const override
+    {
+        return "device_segmented_reduce";
     }
 
     std::string name() const override
     {
-        return bench_naming::format_name(
-            "{lvl:device,algo:segmented_reduce,key_type:" + std::string(Traits<T>::name())
-            + (desired_segments.size() == 1
-                   ? ",segment_count:" + std::to_string(desired_segments[0])
-                   : "")
-            + ",cfg:" + config_name<Config>() + "}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"key_type\":\"" + Traits<T>::name()
+               + "\""
+               + (m_desired_segments.size() == 1
+                      ? ",\"segment_count\":" + std::to_string(m_desired_segments[0])
+                      : "")
+               + ",\"cfg\":" + config_name<Config>() + "}";
     }
 
-    void run_benchmark(benchmark_utils::state&& state, size_t desired_segment)
+    void run_benchmark(primbench::state&& state, size_t desired_segment)
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -113,28 +108,27 @@ public:
         using offset_type = int;
         using value_type  = T;
 
-        // Calculate the number of elements
-        size_t size = bytes / sizeof(T);
+        size_t items = bytes / sizeof(T);
 
         // Generate data
         engine_type gen(seed.get_0());
 
-        const double avg_segment_length = static_cast<double>(size) / desired_segment;
+        const double avg_segment_length = static_cast<double>(items) / desired_segment;
         std::uniform_real_distribution<double> segment_length_dis(0, avg_segment_length * 2);
 
         std::vector<offset_type> offsets;
         unsigned int             segments_count = 0;
         size_t                   offset         = 0;
-        while(offset < size)
+        while(offset < items)
         {
             const size_t segment_length = std::round(segment_length_dis(gen));
             offsets.push_back(offset);
             segments_count++;
             offset += segment_length;
         }
-        offsets.push_back(size);
+        offsets.push_back(items);
 
-        std::vector<value_type> values_input(size);
+        std::vector<value_type> values_input(items);
         std::iota(values_input.begin(), values_input.end(), 0);
 
         common::device_ptr<offset_type> d_offsets(offsets);
@@ -160,7 +154,9 @@ public:
                                                stream));
 
         common::device_ptr<void> d_temporary_storage(temporary_storage_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<T>(items);
 
         state.run(
             [&]
@@ -176,21 +172,16 @@ public:
                                                        init,
                                                        stream));
             });
-
-        total_size += size;
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
-        total_size = 0;
-
-        for(const auto desired_segment : desired_segments)
+        for(const auto desired_segment : m_desired_segments)
         {
-            run_benchmark(std::forward<benchmark_utils::state>(state), desired_segment);
+            run_benchmark(std::forward<primbench::state>(state), desired_segment);
         }
-
-        state.set_throughput(total_size, sizeof(T));
     }
-};
 
-#endif
+private:
+    std::vector<size_t> m_desired_segments;
+};

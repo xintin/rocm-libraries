@@ -20,21 +20,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_SEARCH_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_SEARCH_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_data_generation.hpp"
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/device_search.hpp>
 #include <rocprim/functional.hpp>
@@ -45,27 +41,25 @@
 #include <vector>
 
 template<typename Key = int, typename Config = rocprim::default_config>
-struct device_search_benchmark : public benchmark_utils::autotune_interface
+struct device_search_benchmark : public primbench::benchmark_interface
 {
-    size_t key_size_  = 10;
-    bool   repeating_ = false;
+    device_search_benchmark(size_t key_size, bool repeating)
+        : m_key_size(key_size), m_repeating(repeating)
+    {}
 
-    device_search_benchmark(size_t KeySize, bool repeating)
+    std::string algo() const override
     {
-        key_size_  = KeySize;
-        repeating_ = repeating;
+        return "device_search";
     }
 
     std::string name() const override
     {
-        using namespace std::string_literals;
-        return bench_naming::format_name(
-            "{lvl:device,algo:search,value_pattern:" + (repeating_ ? "repeating"s : "random"s)
-            + ",key_size:" + std::to_string(key_size_)
-            + ",value_type:" + std::string(Traits<Key>::name()) + ",cfg:default_config}");
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"repeating\":"
+               + (m_repeating ? "true" : "false") + ",\"key_size\":" + std::to_string(m_key_size)
+               + ",\"value_type\":\"" + Traits<Key>::name() + "\",\"cfg\":\"default\"}";
     }
 
-    void run(benchmark_utils::state&& state) override
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -74,9 +68,8 @@ struct device_search_benchmark : public benchmark_utils::autotune_interface
         using key_type    = Key;
         using output_type = size_t;
 
-        // Calculate the number of elements
-        size_t size     = bytes / sizeof(key_type);
-        size_t key_size = std::min(size, key_size_);
+        size_t items    = bytes / sizeof(key_type);
+        size_t key_size = std::min(items, m_key_size);
 
         // Generate data
         std::vector<key_type> keys_input
@@ -85,12 +78,12 @@ struct device_search_benchmark : public benchmark_utils::autotune_interface
                                         common::generate_limits<key_type>::max(),
                                         seed.get_0());
 
-        std::vector<key_type> input(size);
-        if(repeating_)
+        std::vector<key_type> input(items);
+        if(m_repeating)
         {
             // Repeating similar pattern without early exits.
             keys_input[key_size - 1] = 0;
-            for(size_t i = 0; i < size; ++i)
+            for(size_t i = 0; i < items; ++i)
             {
                 input[i] = keys_input[i % key_size];
             }
@@ -98,7 +91,7 @@ struct device_search_benchmark : public benchmark_utils::autotune_interface
         }
         else
         {
-            input = get_random_data<key_type>(size,
+            input = get_random_data<key_type>(items,
                                               common::generate_limits<key_type>::min(),
                                               common::generate_limits<key_type>::max(),
                                               seed.get_0() + 1);
@@ -117,13 +110,16 @@ struct device_search_benchmark : public benchmark_utils::autotune_interface
                                   d_input.get(),
                                   d_keys_input.get(),
                                   d_output.get(),
-                                  size,
+                                  items,
                                   key_size,
                                   compare_op,
                                   stream,
                                   false));
 
         common::device_ptr<void> d_temporary_storage(temporary_storage_bytes);
+
+        state.set_items(items);
+        state.add_reads<key_type>(items);
 
         state.run(
             [&]
@@ -133,15 +129,15 @@ struct device_search_benchmark : public benchmark_utils::autotune_interface
                                           d_input.get(),
                                           d_keys_input.get(),
                                           d_output.get(),
-                                          size,
+                                          items,
                                           key_size,
                                           compare_op,
                                           stream,
                                           false));
             });
-
-        state.set_throughput(size, sizeof(key_type));
     }
-};
 
-#endif // ROCPRIM_BENCHMARK_DEVICE_SEARCH_PARALLEL_HPP_
+private:
+    size_t m_key_size  = 10;
+    bool   m_repeating = false;
+};

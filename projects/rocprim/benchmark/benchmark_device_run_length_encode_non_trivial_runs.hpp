@@ -20,20 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#ifndef ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_NON_TRIVIAL_RUNS_PARALLEL_HPP_
-#define ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_NON_TRIVIAL_RUNS_PARALLEL_HPP_
+#pragma once
+
+#include "primbench.hpp"
 
 #include "benchmark_utils.hpp"
 
 #include "../common/utils_device_ptr.hpp"
 
-// Google Benchmark
-#include <benchmark/benchmark.h>
-
-// HIP API
 #include <hip/hip_runtime.h>
 
-// rocPRIM
 #include <rocprim/device/config_types.hpp>
 #include <rocprim/device/detail/device_config_helper.hpp>
 #include <rocprim/device/device_run_length_encode.hpp>
@@ -55,6 +51,24 @@
     #include <memory>
 #endif
 
+inline const char* get_block_load_method_name(rocprim::block_load_method method)
+{
+    switch(method)
+    {
+        case rocprim::block_load_method::block_load_direct:
+            return "block_load_method::block_load_direct";
+        case rocprim::block_load_method::block_load_striped:
+            return "block_load_method::block_load_striped";
+        case rocprim::block_load_method::block_load_vectorize:
+            return "block_load_method::block_load_vectorize";
+        case rocprim::block_load_method::block_load_transpose:
+            return "block_load_method::block_load_transpose";
+        case rocprim::block_load_method::block_load_warp_transpose:
+            return "block_load_method::block_load_warp_transpose";
+    }
+    return "default_method";
+}
+
 template<typename Config>
 std::string non_trivial_runs_config_name()
 {
@@ -67,21 +81,25 @@ std::string non_trivial_runs_config_name()
 template<>
 inline std::string non_trivial_runs_config_name<rocprim::default_config>()
 {
-    return "default_config";
+    return "\"default\"";
 }
 
 template<typename T, size_t MaxLength, typename Config = rocprim::default_config>
-struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_interface
+struct device_non_trivial_runs_benchmark : public primbench::benchmark_interface
 {
-    std::string name() const override
+    std::string algo() const override
     {
-        return bench_naming::format_name(
-            "{lvl:device,algo:run_length_encode,subalgo:non_trivial,key_type:"
-            + std::string(Traits<T>::name()) + ",keys_max_length:" + std::to_string(MaxLength)
-            + ",cfg:" + non_trivial_runs_config_name<Config>() + "}");
+        return "device_run_length_encode_non_trivial_runs";
     }
 
-    void run(benchmark_utils::state&& state) override
+    std::string name() const override
+    {
+        return "{\"lvl\":\"device\",\"algo\":\"" + algo() + "\",\"key_type\":\"" + Traits<T>::name()
+               + "\",\"keys_max_length\":" + std::to_string(MaxLength)
+               + ",\"cfg\":" + non_trivial_runs_config_name<Config>() + "}";
+    }
+
+    void run(primbench::state& state) override
     {
         const auto& stream = state.stream;
         const auto& bytes  = state.bytes;
@@ -95,7 +113,7 @@ struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_inte
 
         constexpr size_t item_size = sizeof(T) + sizeof(offset_type) + sizeof(count_type);
 
-        const size_t size = bytes / item_size;
+        const size_t items = bytes / item_size;
 
         // Generate data
         std::vector<T> input[num_input_arrays];
@@ -103,14 +121,14 @@ struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_inte
         {
             for(size_t i = 0; i < tuning_max_segment_lengths.size(); ++i)
             {
-                input[i] = get_random_segments_iota<T>(size,
+                input[i] = get_random_segments_iota<T>(items,
                                                        tuning_max_segment_lengths[i],
                                                        seed.get_0());
             }
         }
         else
         {
-            input[0] = get_random_segments_iota<T>(size, MaxLength, seed.get_0());
+            input[0] = get_random_segments_iota<T>(items, MaxLength, seed.get_0());
         }
 
         common::device_ptr<T> d_input[num_input_arrays];
@@ -119,8 +137,8 @@ struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_inte
             d_input[i].store(input[i]);
         }
 
-        common::device_ptr<offset_type> d_offsets_output(size);
-        common::device_ptr<count_type>  d_counts_output(size);
+        common::device_ptr<offset_type> d_offsets_output(items);
+        common::device_ptr<count_type>  d_counts_output(items);
         common::device_ptr<count_type>  d_runs_count_output(1);
 
         const auto dispatch = [&](void* d_temporary_storage, size_t& temporary_storage_bytes)
@@ -131,7 +149,7 @@ struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_inte
                     rocprim::run_length_encode_non_trivial_runs<Config>(d_temporary_storage,
                                                                         temporary_storage_bytes,
                                                                         d_input,
-                                                                        size,
+                                                                        items,
                                                                         d_offsets_output.get(),
                                                                         d_counts_output.get(),
                                                                         d_runs_count_output.get(),
@@ -149,11 +167,13 @@ struct device_non_trivial_runs_benchmark : public benchmark_utils::autotune_inte
         size_t temporary_storage_bytes = 0;
         dispatch(nullptr, temporary_storage_bytes);
         common::device_ptr<void> d_temporary_storage(temporary_storage_bytes);
-        HIP_CHECK(hipDeviceSynchronize());
+
+        state.set_items(items);
+        state.add_reads<T>(items);
+        state.add_reads<offset_type>(items);
+        state.add_reads<count_type>(items);
 
         state.run([&] { dispatch(d_temporary_storage.get(), temporary_storage_bytes); });
-
-        state.set_throughput(size, sizeof(T) + sizeof(offset_type) + sizeof(count_type));
     }
     static constexpr bool is_tuning = !std::is_same<Config, rocprim::default_config>::value;
 };
@@ -184,7 +204,7 @@ struct device_non_trivial_runs_benchmark_generator
     template<int ItemsPerThreadExp>
     struct create_ipt
     {
-        void operator()(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+        void operator()(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
         {
             if(!is_load_warp_transpose || is_warp_load_supp)
             {
@@ -202,14 +222,13 @@ struct device_non_trivial_runs_benchmark_generator
         static constexpr unsigned int items_per_thread = 1u << ItemsPerThreadExp;
     };
 
-    static void create(std::vector<std::unique_ptr<benchmark_utils::autotune_interface>>& storage)
+    static void create(std::vector<std::unique_ptr<primbench::benchmark_interface>>& storage)
     {
-        static_for_each<
-            make_index_range<int, min_items_per_thread_exponent, max_items_per_thread_exponent>,
+        primbench::autotuning::static_for_each<
+            primbench::autotuning::
+                make_index_range<int, min_items_per_thread_exponent, max_items_per_thread_exponent>,
             create_ipt>(storage);
     }
 };
 
 #endif // BENCHMARK_CONFIG_TUNING
-
-#endif // ROCPRIM_BENCHMARK_DEVICE_RUN_LENGTH_ENCODE_NON_TRIVIAL_RUNS_PARALLEL_HPP_
