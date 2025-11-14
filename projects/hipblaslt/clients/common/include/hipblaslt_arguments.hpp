@@ -362,6 +362,10 @@ inline bool alpha_isnan_type(const Arguments& arg, hipDataType type)
         return arg.alpha_isnan<float>();
     case HIP_R_64F:
         return arg.alpha_isnan<double>();
+    case HIP_C_32F:
+        return arg.alpha_isnan<std::complex<float>>();
+    case HIP_C_64F:
+        return arg.alpha_isnan<std::complex<double>>();
     case HIP_R_16F:
         return arg.alpha_isnan<hipblasLtHalf>();
     case HIP_R_32I:
@@ -380,6 +384,10 @@ inline bool beta_isnan_type(const Arguments& arg, hipDataType type)
         return arg.beta_isnan<float>();
     case HIP_R_64F:
         return arg.beta_isnan<double>();
+    case HIP_C_32F:
+        return arg.beta_isnan<std::complex<float>>();
+    case HIP_C_64F:
+        return arg.beta_isnan<std::complex<double>>();
     case HIP_R_16F:
         return arg.beta_isnan<hipblasLtHalf>();
     case HIP_R_32I:
@@ -399,6 +407,12 @@ inline void set_alpha_type(computeTypeInterface& h_alpha, const Arguments& arg, 
         return;
     case HIP_R_64F:
         h_alpha.f64 = arg.get_alpha<double>();
+        return;
+    case HIP_C_32F:
+        h_alpha.cf = arg.get_alpha<std::complex<float>>();
+        return;
+    case HIP_C_64F:
+        h_alpha.cd = arg.get_alpha<std::complex<double>>();
         return;
     case HIP_R_16F:
         h_alpha.f16 = arg.get_alpha<hipblasLtHalf>();
@@ -422,6 +436,12 @@ inline void set_beta_type(computeTypeInterface& h_beta, const Arguments& arg, hi
     case HIP_R_64F:
         h_beta.f64 = arg.get_beta<double>();
         return;
+    case HIP_C_32F:
+        h_beta.cf = arg.get_beta<std::complex<float>>();
+        return;
+    case HIP_C_64F:
+        h_beta.cd = arg.get_beta<std::complex<double>>();
+        return;
     case HIP_R_16F:
         h_beta.f16 = arg.get_beta<hipblasLtHalf>();
         return;
@@ -443,6 +463,12 @@ inline void set_computeInterface(computeTypeInterface& src, void* ptr, hipDataTy
         return;
     case HIP_R_64F:
         src.f64 = *(double*)ptr;
+        return;
+    case HIP_C_32F:
+        src.cf = *(std::complex<float>*)ptr;
+        return;
+    case HIP_C_64F:
+        src.cd = *(std::complex<double>*)ptr;
         return;
     case HIP_R_16F:
         src.f16 = *(hipblasLtHalf*)ptr;
@@ -466,6 +492,12 @@ inline void set_computeInterface(computeTypeInterface& src, double value, hipDat
     case HIP_R_64F:
         src.f64 = static_cast<double>(value);
         return;
+    case HIP_C_32F:
+        src.cf = static_cast<std::complex<float>>(value);
+        return;
+    case HIP_C_64F:
+        src.cd = static_cast<std::complex<double>>(value);
+        return;
     case HIP_R_16F:
         src.f16 = static_cast<hipblasLtHalf>(value);
         return;
@@ -482,12 +514,18 @@ inline void
     mul_computeInterface(computeTypeInterface& dst, computeTypeInterface& src, hipDataType type)
 {
     switch(type)
-    {
+    {//RK: TODO revisit?
     case HIP_R_32F:
         dst.f32 *= src.f32;
         return;
     case HIP_R_64F:
         dst.f64 *= src.f64;
+        return;
+    case HIP_C_32F:
+        dst.cf *= src.f32;
+        return;
+    case HIP_C_64F:
+        dst.cd *= src.f64;
         return;
     case HIP_R_16F:
         dst.f16 *= src.f16;
@@ -509,6 +547,10 @@ inline double get_computeInterface(const computeTypeInterface src, hipDataType t
         return (double)src.f32;
     case HIP_R_64F:
         return (double)src.f64;
+    case HIP_C_32F:
+        return (double)std::abs(src.cf);
+    case HIP_C_64F:
+        return (double)std::abs(src.cd);
     case HIP_R_16F:
         return (double)src.f16;
     case HIP_R_32I:

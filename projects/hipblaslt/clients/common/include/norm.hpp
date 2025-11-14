@@ -107,7 +107,8 @@ template <
     typename T,
     std::enable_if_t<!(std::is_same<T, hipblaslt_f8_fnuz>{} || std::is_same<T, hipblaslt_bf8_fnuz>{}
                        || std::is_same<T, hipblaslt_f8>{} || std::is_same<T, hipblaslt_bf8>{}
-                       ),
+                       || std::is_same<T, std::complex<float>>{}
+                       || std::is_same<T, std::complex<double>>{}),
                      int>
     = 0>
 double norm_check_general(char norm_type, int64_t M, int64_t N, int64_t lda, T* hCPU, T* hGPU)
@@ -144,6 +145,53 @@ double norm_check_general(char norm_type, int64_t M, int64_t N, int64_t lda, T* 
     m_axpy(&size, &alpha, hCPU_double.data(), &incx, hGPU_double.data(), &incx);
     double error = xlange(&norm_type, &m, &n, hGPU_double.data(), &l, work) / cpu_norm;
     return error;
+}
+
+template <
+    typename T,
+    std::enable_if_t<(std::is_same<T, std::complex<float>>{}
+                       || std::is_same<T, std::complex<double>>{}),
+                   int>
+    = 0>
+double norm_check_general(char norm_type, int64_t M, int64_t N, int64_t lda, T* hCPU, T* hGPU)
+{
+    if(M * N == 0)
+        return 0;
+
+    size_t size = N * (size_t)lda;
+
+    // We need two vectors: one for the norm of hCPU, one for the norm of the error (hGPU - hCPU)
+    // We store the magnitudes (std::abs) of the complex numbers, which are real (double).
+    host_vector<double> hCPU_norm_vec(size);
+    host_vector<double> hError_norm_vec(size);
+
+    for(int64_t i = 0; i < N; i++)
+    {
+        for(int64_t j = 0; j < M; j++)
+        {
+            size_t idx = j + i * (size_t)lda;
+            // For norm(CPU), we use the magnitude of each element
+            hCPU_norm_vec[idx] = std::abs(hCPU[idx]);
+            // For norm(Error), we use the magnitude of the difference
+            hError_norm_vec[idx] = std::abs(hGPU[idx] - hCPU[idx]);
+        }
+    }
+
+    double work[1];
+    int    m = static_cast<int>(M);
+    int    n = static_cast<int>(N);
+    int    l = static_cast<int>(lda);
+
+    // cpu_norm = norm(abs(hCPU))
+    double cpu_norm = xlange(&norm_type, &m, &n, hCPU_norm_vec.data(), &l, work);
+    
+    // error_norm = norm(abs(hGPU - hCPU))
+    double error_norm = xlange(&norm_type, &m, &n, hError_norm_vec.data(), &l, work);
+
+    if(cpu_norm == 0)
+        return error_norm == 0 ? 0.0 : 1.0; // Return 0 if both are 0, else 1 (inf error)
+
+    return error_norm / cpu_norm;
 }
 
 template <typename T,
@@ -352,6 +400,12 @@ double norm_check_general(
     case HIP_R_64F:
         return norm_check_general<double>(
             norm_type, M, N, lda, static_cast<double*>(hCPU), static_cast<double*>(hGPU));
+    case HIP_C_32F:
+        return norm_check_general<std::complex<float>>(
+            norm_type, M, N, lda, static_cast<std::complex<float>*>(hCPU), static_cast<std::complex<float>*>(hGPU));
+    case HIP_C_64F:
+        return norm_check_general<std::complex<double>>(
+            norm_type, M, N, lda, static_cast<std::complex<double>*>(hCPU), static_cast<std::complex<double>*>(hGPU));
     case HIP_R_16F:
         return norm_check_general<hipblasLtHalf>(norm_type,
                                                  M,
@@ -439,6 +493,24 @@ double norm_check_general(char        norm_type,
                                           stride_a,
                                           static_cast<double*>(hCPU),
                                           static_cast<double*>(hGPU),
+                                          batch_count);
+    case HIP_C_32F:
+        return norm_check_general<std::complex<float>>(norm_type,
+                                         M,
+                                         N,
+                                         lda,
+                                         stride_a,
+                                         static_cast<std::complex<float>*>(hCPU),
+                                         static_cast<std::complex<float>*>(hGPU),
+                                         batch_count);
+    case HIP_C_64F:
+        return norm_check_general<std::complex<double>>(norm_type,
+                                          M,
+                                          N,
+                                          lda,
+                                          stride_a,
+                                          static_cast<std::complex<double>*>(hCPU),
+                                          static_cast<std::complex<double>*>(hGPU),
                                           batch_count);
     case HIP_R_16F:
         return norm_check_general<hipblasLtHalf>(norm_type,
@@ -555,6 +627,10 @@ bool norm_check(double norm_error, hipDataType type)
     case HIP_R_32F:
         return norm_error < 0.00001;
     case HIP_R_64F:
+        return norm_error < 0.000000000001;
+    case HIP_C_32F:
+        return norm_error < 0.00001; 
+    case HIP_C_64F:
         return norm_error < 0.000000000001;
     case HIP_R_16F:
         return norm_error < 0.01;

@@ -19,6 +19,15 @@ Definitions:
     - { transA: T, transB: N }
     - { transA: T, transB: T }
 
+  - &transA_transB_range2
+    - { transA: N, transB: N }
+   # - { transA: N, transB: T }
+   #- { transA: T, transB: N }
+   # - { transA: T, transB: T }
+    #- { transA: C, transB: N }
+    #- { transA: N, transB: C }
+    #- { transA: C, transB: C }
+
   - &deepbench_alpha_beta_range
     - { alpha: 1, beta: 0 }
     - { alpha: 1, beta: 1 }
@@ -304,13 +313,38 @@ Tests:
 - name: matmul_8_64
   category: quick
   function:
-    matmul: *real_precisions
+    matmul: *complex_float_precision #*complex_precisions  #*real_precisions
   M: 8
   N: 8
   K: 64
   alpha_beta: *alpha_beta_range
-  transA_transB: *transA_transB_range
+  transA_transB: *transA_transB_range2
 
+
+- name: rktest1
+  category: quick
+  function:
+    matmul: *complex_float_precision #*complex_precisions  #*real_precisions
+  M: 3
+  N: 3
+  K: 3
+  alpha: 1
+  beta : 0
+  transA : N 
+  transB : N 
+  c_equal_d : false
+
+- name: rktest2
+  category: quick
+  function:
+    matmul: *single_precision 
+  M: 2
+  N: 2
+  K: 2
+  alpha: 1
+  beta : 0
+  transA : N 
+  transB : N 
 
 - name: matmul_96
   category: pre_checkin

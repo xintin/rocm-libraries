@@ -77,6 +77,84 @@ extern "C" __global__ void flush_icache()
                          :);
 }
 
+//RK Debug
+#include <complex>
+#include <iomanip>
+
+template <typename T>
+void print_matrix_value(const T& val)
+{
+    // Default print for float, double, int
+    hipblaslt_cout << std::setw(10) << val << " ";
+}
+
+template <>
+void print_matrix_value<std::complex<float>>(const std::complex<float>& val)
+{
+    hipblaslt_cout << "(" << std::setw(8) << val.real() << ", " << std::setw(8) << val.imag()
+                   << ") ";
+}
+
+template <>
+void print_matrix_value<std::complex<double>>(const std::complex<double>& val)
+{
+    hipblaslt_cout << "(" << std::setw(10) << val.real() << ", " << std::setw(10) << val.imag()
+                   << ") ";
+}
+
+// Specialization for hipblasLtHalf
+template <>
+void print_matrix_value<hipblasLtHalf>(const hipblasLtHalf& val)
+{
+    hipblaslt_cout << std::setw(10) << static_cast<float>(val) << " ";
+}
+
+// Specialization for hip_bfloat16
+template <>
+void print_matrix_value<hip_bfloat16>(const hip_bfloat16& val)
+{
+    hipblaslt_cout << std::setw(10) << static_cast<float>(val) << " ";
+}
+template <>
+void print_matrix_value<float>(const float& val)
+{
+    hipblaslt_cout << std::setw(10) << std::setprecision(3) << val << " ";
+}
+
+// Specialization for double (double precision)
+template <>
+void print_matrix_value<double>(const double& val)
+{
+    hipblaslt_cout << std::setw(10) << std::setprecision(3) << val << " ";
+}
+
+template <typename T>
+void print_matrix(const char* title,
+                  const T*    matrix,
+                  int64_t     M,
+                  int64_t     N,
+                  int64_t     lda,
+                  int64_t     batch_idx = 0,
+                  int64_t     stride    = 0)
+{
+    hipblaslt_cout << "--- " << title << " (Batch " << batch_idx << ", " << M << "x" << N
+                   << ", lda=" << lda << ") ---\n";
+    hipblaslt_cout << std::fixed << std::setprecision(3);
+
+    const T* matrix_batch = matrix + (batch_idx * stride);
+
+    for(int i = 0; i < M; i++)
+    {
+        for(int j = 0; j < N; j++)
+        {
+            print_matrix_value(matrix_batch[i + j * lda]);
+        }
+        hipblaslt_cout << "\n";
+    }
+    hipblaslt_cout << "----------------------------------------\n\n";
+}
+// RK Debug end
+
 bool isSwizzleSupported(hipDataType datatype)
 {
     switch(datatype)
@@ -290,12 +368,29 @@ inline void post_gpu_time(bool         use_gpu_timer,
 template <typename Tout>
 Tout cast_from_type(void* in, hipDataType type, size_t index)
 {
+    constexpr bool tout_is_real = !is_std_complex_v<Tout>;
     switch(type)
     {
     case HIP_R_32F:
         return static_cast<Tout>((static_cast<float*>(in))[index]);
     case HIP_R_64F:
         return static_cast<Tout>((static_cast<double*>(in))[index]);
+    case HIP_C_32F:
+    {
+        auto val = (static_cast<std::complex<float>*>(in))[index];
+        if constexpr(tout_is_real)
+            return static_cast<Tout>(val.real()); // Extract real part
+        else
+            return static_cast<Tout>(val); // Cast complex-to-complex
+    }
+    case HIP_C_64F:
+    {
+        auto val = (static_cast<std::complex<double>*>(in))[index];
+        if constexpr(tout_is_real)
+            return static_cast<Tout>(val.real()); // Extract real part
+        else
+            return static_cast<Tout>(val); // Cast complex-to-complex
+    }
     case HIP_R_16F:
         return static_cast<Tout>((static_cast<hipblasLtHalf*>(in))[index]);
     case HIP_R_16BF:
@@ -410,7 +505,7 @@ void epilogue_func(int64_t     m,
     auto in_Tact = static_cast<Tact>(in[pos]) + bias_data;                                    \
     if(e && !gradient)                                                                        \
     {                                                                                         \
-        saturate_cast_to_type(e, in_Tact* scaleE, aux_type, pos);                             \
+        saturate_cast_to_type(e, in_Tact * scaleE, aux_type, pos);                            \
     }                                                                                         \
     Tact in_Tact_act = 0;                                                                     \
     if(gradient)                                                                              \
@@ -556,12 +651,12 @@ void epilogue_func(int64_t     m,
                    bool        gradient,
                    hipDataType To)
 {
-#define CALCULATE_EPILOGUE_BASIC                               \
-    auto pos  = j * ld + i;                                    \
-    Tc   temp = static_cast<Ti>(*(in + pos)) + bias_data;      \
-    if(e)                                                      \
-    {                                                          \
-        saturate_cast_to_type(e, temp* scaleE, aux_type, pos); \
+#define CALCULATE_EPILOGUE_BASIC                                \
+    auto pos  = j * ld + i;                                     \
+    Tc   temp = static_cast<Ti>(*(in + pos)) + bias_data;       \
+    if(e)                                                       \
+    {                                                           \
+        saturate_cast_to_type(e, temp * scaleE, aux_type, pos); \
     }
 
     for(int i = 0; i < m; i++)
@@ -1120,7 +1215,6 @@ hipDataType derive_unset_bias_type(const Arguments& arg)
         throw std::invalid_argument("Invalid bias type "
                                     + std::string(hip_datatype_to_string(real_bias_type)));
 
-
     return real_bias_type;
 }
 
@@ -1282,7 +1376,8 @@ void testing_matmul(const Arguments& arg)
                 arg_revised, tiA, tiB, to, tc, tciA, tciB, HIP_R_32F, real_aux_type);
         }
     }
-    else if(to == HIP_R_32F || to == HIP_R_32I || to == HIP_R_8I || to == HIP_R_64F || to == HIP_C_32F || to == HIP_C_64F)
+    else if(to == HIP_R_32F || to == HIP_R_32I || to == HIP_R_8I || to == HIP_R_64F
+            || to == HIP_C_32F || to == HIP_C_64F)
     {
         //set Tbias to To
         return testing_matmul_with_bias(
@@ -1325,7 +1420,8 @@ void testing_matmul_with_bias(const Arguments& arg,
 
     std::vector<int64_t> M(gemm_count), N(gemm_count), K(gemm_count), lda(gemm_count),
         ldb(gemm_count), ldc(gemm_count), ldd(gemm_count), lde(gemm_count);
-    std::vector<computeTypeInterface> h_alpha(gemm_count), h_beta(gemm_count);
+    std::vector<computeTypeInterface> h_alpha(gemm_count, computeTypeInterface{}),
+        h_beta(gemm_count, computeTypeInterface{});
     std::vector<int64_t> A_row(gemm_count), A_col(gemm_count), B_row(gemm_count), B_col(gemm_count);
     std::vector<int64_t> stride_a(gemm_count), stride_da(gemm_count), stride_b(gemm_count),
         stride_db(gemm_count), stride_c(gemm_count), stride_d(gemm_count), stride_e(gemm_count);
@@ -1392,9 +1488,9 @@ void testing_matmul_with_bias(const Arguments& arg,
         stride_d[i] = do_batched[i] ? arg.stride_c[i] : ldd[i] * N[i];
         stride_e[i] = do_batched[i] ? arg.stride_e[i] : lde[i] * N[i];
 
-        size_A[i]
-            = stride_a[i] == 0 ? lda[i] * A_col[i] * num_batches[i]
-                               : lda[i] <= stride_a[i] ? stride_a[i] * num_batches[i] : lda[i] * A_col[i];
+        size_A[i] = stride_a[i] == 0        ? lda[i] * A_col[i] * num_batches[i]
+                    : lda[i] <= stride_a[i] ? stride_a[i] * num_batches[i]
+                                            : lda[i] * A_col[i];
         // for (!do_swizzle_a) case, we can use size_dA and stride_da instead of size_A and stride_a
         size_dA[i]   = size_A[i];
         stride_da[i] = stride_a[i];
@@ -1417,9 +1513,9 @@ void testing_matmul_with_bias(const Arguments& arg,
             size_dA[i] = num_batches[i] * stride_swizzle;
         }
 
-        size_B[i]
-            = stride_b[i] == 0 ? ldb[i] * B_col[i] * num_batches[i]
-                               : ldb[i] <= stride_b[i] ? stride_b[i] * num_batches[i] : ldb[i] * B_col[i];
+        size_B[i] = stride_b[i] == 0        ? ldb[i] * B_col[i] * num_batches[i]
+                    : ldb[i] <= stride_b[i] ? stride_b[i] * num_batches[i]
+                                            : ldb[i] * B_col[i];
         // for (!do_swizzle_b) case, we can use size_dB and stride_db instead of size_B and stride_b
         size_dB[i]   = size_B[i];
         stride_db[i] = stride_b[i];
@@ -1441,14 +1537,15 @@ void testing_matmul_with_bias(const Arguments& arg,
             }
             size_dB[i] = num_batches[i] * stride_swizzle;
         }
-        size_C[i]
-            = stride_c[i] == 0 ? ldc[i] * N[i] * num_batches[i]
-                               : ldc[i] <= stride_c[i] ? stride_c[i] * num_batches[i] : ldc[i] * N[i];
-        size_D[i]
-            = stride_d[i] == 0 ? ldd[i] * N[i] * num_batches[i]
-                               : ldd[i] <= stride_d[i] ? stride_d[i] * num_batches[i] : ldd[i] * N[i];
-        size_E[i] = arg.use_e ? (stride_e[i] == 0 ? lde[i] * N[i] * num_batches[i]
-                                                  : lde[i] <= stride_e[i] ? stride_e[i] * num_batches[i] : lde[i] * N[i])
+        size_C[i] = stride_c[i] == 0        ? ldc[i] * N[i] * num_batches[i]
+                    : ldc[i] <= stride_c[i] ? stride_c[i] * num_batches[i]
+                                            : ldc[i] * N[i];
+        size_D[i] = stride_d[i] == 0        ? ldd[i] * N[i] * num_batches[i]
+                    : ldd[i] <= stride_d[i] ? stride_d[i] * num_batches[i]
+                                            : ldd[i] * N[i];
+        size_E[i] = arg.use_e ? (stride_e[i] == 0        ? lde[i] * N[i] * num_batches[i]
+                                 : lde[i] <= stride_e[i] ? stride_e[i] * num_batches[i]
+                                                         : lde[i] * N[i])
                               : 0;
         if(arg.c_equal_d)
         {
@@ -2005,9 +2102,27 @@ void testing_matmul_with_bias(const Arguments& arg,
 
             if(arg.dump_matrix)
             {
-                hipblasltDispatchValuesToFile(transA, TiA, M[i], K[i], lda[i], hA[i].buf(), "batch_"+ std::to_string(i)+"_A_input.txt");
-                hipblasltDispatchValuesToFile(transB, TiB, K[i], N[i], ldb[i], hB[i].buf(), "batch_"+ std::to_string(i)+"_B_input.txt");
-                hipblasltDispatchValuesToFile(HIPBLAS_OP_N, To, M[i], N[i], ldc[i], hC[i].buf(), "batch_"+ std::to_string(i)+"_C_input.txt");
+                hipblasltDispatchValuesToFile(transA,
+                                              TiA,
+                                              M[i],
+                                              K[i],
+                                              lda[i],
+                                              hA[i].buf(),
+                                              "batch_" + std::to_string(i) + "_A_input.txt");
+                hipblasltDispatchValuesToFile(transB,
+                                              TiB,
+                                              K[i],
+                                              N[i],
+                                              ldb[i],
+                                              hB[i].buf(),
+                                              "batch_" + std::to_string(i) + "_B_input.txt");
+                hipblasltDispatchValuesToFile(HIPBLAS_OP_N,
+                                              To,
+                                              M[i],
+                                              N[i],
+                                              ldc[i],
+                                              hC[i].buf(),
+                                              "batch_" + std::to_string(i) + "_C_input.txt");
             }
         }
 
@@ -3105,7 +3220,6 @@ void testing_matmul_with_bias(const Arguments& arg,
             for(int i = 0; i < returnedAlgoCount; i++)
                 workspace_size = std::max(workspace_size, heuristicResult[i].workspaceSize);
             CHECK_RETURNED_WORKSPACE_SIZE(workspace_size, max_workspace_size);
-
         }
         else
         {
@@ -3222,7 +3336,7 @@ void testing_matmul_with_bias(const Arguments& arg,
         {
             auto                 alpha    = h_alpha[gemmIdx];
             auto                 betaTemp = h_beta[gemmIdx];
-            computeTypeInterface tempSC;
+            computeTypeInterface tempSC{};
             if(arg.scaleC)
             {
                 // betaTemp *= hScaleC[gemmIdx][0];
@@ -3230,7 +3344,7 @@ void testing_matmul_with_bias(const Arguments& arg,
                 mul_computeInterface(betaTemp, tempSC, Tc);
             }
 
-            computeTypeInterface scale;
+            computeTypeInterface scale{};
             set_computeInterface(scale, 1, Talpha);
             void* scaleAVec   = (arg.scaleA == hipblaslt_scaling_format::Scalar
                                || arg.scaleA == hipblaslt_scaling_format::Vector)
@@ -3248,6 +3362,72 @@ void testing_matmul_with_bias(const Arguments& arg,
 
             for(int batchIdx = 0; batchIdx < num_batches[gemmIdx]; batchIdx++)
             {
+                // ***** ADD PRINT STATEMENTS HERE *****
+                // This will print batch 0 for the first GEMM in a group.
+                if(gemmIdx == 0 && batchIdx == 0 && To == HIP_C_32F)
+                {
+                    hipblaslt_cout << "\n=============== DEBUG MATRICES (gemmIdx=0, batch=0) "
+                                      "===============\n";
+                    // Print Input A
+                    print_matrix("Input A (hA)",
+                                 hA[gemmIdx].as<std::complex<float>>(),
+                                 A_row[gemmIdx],
+                                 A_col[gemmIdx],
+                                 lda[gemmIdx],
+                                 batchIdx,
+                                 stride_a[gemmIdx]);
+
+                    // Print Input B
+                    print_matrix("Input B (hB)",
+                                 hB[gemmIdx].as<std::complex<float>>(),
+                                 B_row[gemmIdx],
+                                 B_col[gemmIdx],
+                                 ldb[gemmIdx],
+                                 batchIdx,
+                                 stride_b[gemmIdx]);
+
+                    // Print Input C (before it's overwritten by CBLAS)
+                    print_matrix("Input C (hC)",
+                                 hC[gemmIdx].as<std::complex<float>>(),
+                                 M[gemmIdx],
+                                 N[gemmIdx],
+                                 ldc[gemmIdx],
+                                 batchIdx,
+                                 stride_c[gemmIdx]);
+                }
+                if(gemmIdx == 0 && batchIdx == 0 && To == HIP_R_32F)
+                {
+                    hipblaslt_cout << "\n=============== DEBUG MATRICES (gemmIdx=0, batch=0) "
+                                      "===============\n";
+                    // Print Input A
+                    print_matrix("Input A (hA)",
+                                 hA[gemmIdx].as<float>(),
+                                 A_row[gemmIdx],
+                                 A_col[gemmIdx],
+                                 lda[gemmIdx],
+                                 batchIdx,
+                                 stride_a[gemmIdx]);
+
+                    // Print Input B
+                    print_matrix("Input B (hB)",
+                                 hB[gemmIdx].as<float>(),
+                                 B_row[gemmIdx],
+                                 B_col[gemmIdx],
+                                 ldb[gemmIdx],
+                                 batchIdx,
+                                 stride_b[gemmIdx]);
+
+                    // Print Input C (before it's overwritten by CBLAS)
+                    print_matrix("Input C (hC)",
+                                 hC[gemmIdx].as<float>(),
+                                 M[gemmIdx],
+                                 N[gemmIdx],
+                                 ldc[gemmIdx],
+                                 batchIdx,
+                                 stride_c[gemmIdx]);
+                }
+                // ***** END OF PRINT BLOCK *****
+
                 if(epilogue_on[gemmIdx])
                 {
                     // Note: for MX types, pass the reference float instead so there is
@@ -3484,6 +3664,32 @@ void testing_matmul_with_bias(const Arguments& arg,
                         (arg.scaleB == hipblaslt_scaling_format::Block));
                 }
             }
+
+            // ***** ADD PRINT STATEMENT FOR CBLAS OUTPUT *****
+            if(gemmIdx == 0)
+            {
+                if(To == HIP_C_32F)
+                {
+                    print_matrix("CBLAS Output (hD_gold)",
+                                 hD_gold[gemmIdx].as<std::complex<float>>(),
+                                 M[gemmIdx],
+                                 N[gemmIdx],
+                                 ldd[gemmIdx],
+                                 0,
+                                 stride_d[gemmIdx]);
+                }
+                else if(To == HIP_R_32F)
+                {
+                    print_matrix("CBLAS Output (hD_gold)",
+                                 hD_gold[gemmIdx].as<float>(),
+                                 M[gemmIdx],
+                                 N[gemmIdx],
+                                 ldd[gemmIdx],
+                                 0,
+                                 stride_d[gemmIdx]);
+                }
+            }
+            // ***** END OF PRINT BLOCK *****
         }
 
         if(arg.timing)
@@ -3491,7 +3697,50 @@ void testing_matmul_with_bias(const Arguments& arg,
             cpu_time_used = get_time_us_no_sync() - cpu_time_used;
         }
     }
+    void* alpha_ptr = nullptr;
+    void* beta_ptr  = nullptr;
 
+    if(gemm_count > 0)
+    {
+        switch(Tc)
+        {
+        case HIP_R_32F:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].f32);
+            beta_ptr = (void*)&(h_beta[0].f32);
+            break;
+        case HIP_R_64F:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].f64);
+            beta_ptr = (void*)&(h_beta[0].f64);
+            break;
+        case HIP_R_16F:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].f16);
+            beta_ptr = (void*)&(h_beta[0].f16);
+            break;
+        case HIP_R_32I:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].i32);
+            beta_ptr = (void*)&(h_beta[0].i32);
+            break;
+        case HIP_C_32F:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].cf);
+            beta_ptr = (void*)&(h_beta[0].cf);
+            break;
+        case HIP_C_64F:
+            alpha_ptr
+                = arg.scaleAlpha_vector ? (void*)dScaleAlphaVec[0].buf() : (void*)&(h_alpha[0].cd);
+            beta_ptr = (void*)&(h_beta[0].cd);
+            break;
+        default:
+            hipblaslt_cerr << "FATAL: Unsupported type in pointer setup for hipblasLtMatmul"
+                           << std::endl;
+            alpha_ptr = nullptr;
+            beta_ptr  = nullptr;
+        }
+    }
     if(!arg.timing)
     {
         for(size_t sol = 0; sol < heuristicResult.size(); sol++)
@@ -3519,12 +3768,12 @@ void testing_matmul_with_bias(const Arguments& arg,
                     CHECK_HIP_ERROR(hipStreamSynchronize(stream));
                     EXPECT_HIPBLAS_STATUS(hipblasLtMatmul(handle,
                                                           matmul[0][0],
-                                                          alpha_in[0],
+                                                          alpha_ptr,
                                                           dA[0].buf(),
                                                           matA[0],
                                                           dB[0].buf(),
                                                           matB[0],
-                                                          &(h_beta[0]),
+                                                          beta_ptr,
                                                           dC[0].buf(),
                                                           matC[0],
                                                           (*dDp)[0].buf(),
@@ -3585,6 +3834,32 @@ void testing_matmul_with_bias(const Arguments& arg,
             if(arg.unit_check || arg.norm_check || arg.allclose_check)
             {
                 copy_gemm_to_host(stream, gemm_count, hD_1, (*dDp));
+                // ***** ADD PRINT STATEMENT FOR GPU OUTPUT *****
+                if(To == HIP_C_32F)
+                {
+                    print_matrix("GPU Output (hD_1)",
+                                 hD_1[0].as<std::complex<float>>(),
+                                 M[0],
+                                 N[0],
+                                 ldd[0],
+                                 0,
+                                 stride_d[0]);
+                    hipblaslt_cout
+                        << "=================================================================\n\n";
+                }
+                else if(To == HIP_R_32F)
+                {
+                    print_matrix("GPU Output (hD_1)",
+                                 hD_1[0].as<float>(),
+                                 M[0],
+                                 N[0],
+                                 ldd[0],
+                                 0,
+                                 stride_d[0]);
+                    hipblaslt_cout
+                        << "=================================================================\n\n";
+                }
+                // ***** END OF PRINT BLOCK *****
                 check(stream,
                       arg,
                       gemm_count,
@@ -3750,14 +4025,14 @@ void testing_matmul_with_bias(const Arguments& arg,
                             hipblasLtMatmul(
                                 handle,
                                 ptr_matmul,
-                                ptr_alpha,
+                                alpha_ptr,
                                 dA[0].as<char>()
                                     + (i % block_count) * size_dA[0] * realDataTypeSize(TiA),
                                 matA[0],
                                 dB[0].as<char>()
                                     + (i % block_count) * size_dB[0] * realDataTypeSize(TiB),
                                 matB[0],
-                                &(h_beta[0]),
+                                beta_ptr,
                                 dC[0].as<char>()
                                     + (i % block_count) * size_C[0] * realDataTypeSize(To),
                                 matC[0],
@@ -3806,14 +4081,14 @@ void testing_matmul_with_bias(const Arguments& arg,
                             hipblasLtMatmul(
                                 handle,
                                 ptr_matmul,
-                                ptr_alpha,
+                                alpha_ptr,
                                 dA[0].as<char>()
                                     + (i % block_count) * size_dA[0] * realDataTypeSize(TiA),
                                 matA[0],
                                 dB[0].as<char>()
                                     + (i % block_count) * size_dB[0] * realDataTypeSize(TiB),
                                 matB[0],
-                                &(h_beta[0]),
+                                beta_ptr,
                                 dC[0].as<char>()
                                     + (i % block_count) * size_C[0] * realDataTypeSize(To),
                                 matC[0],
@@ -4000,8 +4275,20 @@ void testing_matmul_with_bias(const Arguments& arg,
             {
                 if(arg.dump_matrix)
                 {
-                    hipblasltDispatchValuesToFile(HIPBLAS_OP_N, To, M[0], N[0], ldd[0], hD_1[0].buf(), "batch_0_D_output.txt");
-                    hipblasltDispatchValuesToFile(HIPBLAS_OP_N, To, M[0], N[0], ldd[0], hD_gold[0].buf(), "batch_0_D_Gold_output.txt");
+                    hipblasltDispatchValuesToFile(HIPBLAS_OP_N,
+                                                  To,
+                                                  M[0],
+                                                  N[0],
+                                                  ldd[0],
+                                                  hD_1[0].buf(),
+                                                  "batch_0_D_output.txt");
+                    hipblasltDispatchValuesToFile(HIPBLAS_OP_N,
+                                                  To,
+                                                  M[0],
+                                                  N[0],
+                                                  ldd[0],
+                                                  hD_gold[0].buf(),
+                                                  "batch_0_D_Gold_output.txt");
                 }
                 check(stream,
                       arg,

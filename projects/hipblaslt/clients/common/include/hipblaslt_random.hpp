@@ -43,6 +43,12 @@ extern std::thread::id g_main_thread_id;
 extern thread_local hipblaslt_rng_t t_hipblaslt_rng;
 extern thread_local int             t_hipblaslt_rand_idx;
 
+
+template <typename T>
+constexpr bool is_std_complex_v
+    = std::is_same_v<T, std::complex<float>> || std::is_same_v<T, std::complex<double>>;
+
+
 // optimized helper
 float hipblaslt_uniform_int_1_10();
 
@@ -350,7 +356,23 @@ inline void random_run_generator_small(T* ptr, size_t num)
 {
     for(size_t i = 0; i < num; i++)
     {
-        ptr[i] = random_generator<T>() / 10.f;
+        if constexpr(is_std_complex_v<T>)
+        {
+            using RealT = typename T::value_type;
+            // Logic for complex types using RealT...
+
+            // Division fix (from previous exchange) needs to use RealT
+            // ptr[i] = random_generator<T>() / static_cast<RealT>(10.0);
+        }
+        else
+        {
+            // Logic for basic types (float, double, int, custom types)
+            // Division fix needs to use the correct type for division
+
+            // This handles the division issue (where T=complex<double> and divisor was 10.f)
+            // For real types, the best base type for division is double.
+            ptr[i] = random_generator<T>() / static_cast<double>(10.0);
+        }
     }
 }
 

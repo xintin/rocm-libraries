@@ -540,7 +540,7 @@ rocblas_status getAllSolutionsHipBlasLT(const RocblasContractionProblem<Ti, To, 
     rocblas_status status     = rocblas_status_success;
     int            added_sols = 0;
 
-    if(is_complex)
+ /*    if(is_complex)
     {
         // TODO: revisit with any hipblaslt support changes, or with query of hipblaslt for support
         if(list_array == nullptr)
@@ -548,7 +548,7 @@ rocblas_status getAllSolutionsHipBlasLT(const RocblasContractionProblem<Ti, To, 
             *list_size = 0;
         }
     }
-    else
+    else */
     {
         hipblasLtHandle_t& handle = *(prob.handle->getHipblasLtHandle());
 

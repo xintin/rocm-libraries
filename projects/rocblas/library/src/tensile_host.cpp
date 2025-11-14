@@ -1116,14 +1116,15 @@ inline bool fallbackTensileProblem(Tensile::ContractionProblem& tensile_prob)
 template <typename Ti, typename To, typename Tc>
 bool useHipBLASLt(const RocblasContractionProblem<Ti, To, Tc>& prob)
 {
+    return true;
 #ifdef BUILD_WITH_HIPBLASLT
     if constexpr(sizeof(Ti) >= 4)
     {
-        // TODO remove after tuning
+      /*   // TODO remove after tuning
         if(rocblas_internal_get_arch(prob.handle) == 950 && !prob.handle->isHipBLASLtForcedOn())
         {
             return false;
-        }
+        } */
     }
 
     bool batched = prob.batch_A != nullptr;
@@ -1420,6 +1421,7 @@ rocblas_status getAllSolutions(const RocblasContractionProblem<Ti, To, Tc>& prob
 #ifdef BUILD_WITH_HIPBLASLT
     if(useHipBLASLt(prob))
     {
+        rocblas_cout<<"RK: use hipblaslt"<<std::endl;
         // getAllSolutionsHipBlasLT also includes call to getRocblasSolutions() as to not change API
         return getAllSolutionsHipBlasLT(prob, option, list_array, list_size);
     }
